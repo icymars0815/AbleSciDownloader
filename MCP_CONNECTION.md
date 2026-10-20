@@ -1,6 +1,6 @@
-# 文献通（KYTDL）MCP 与命令行连接教程
+# 科研通下载器（KYTDL）MCP 与命令行连接教程
 
-说明：产品名为“文献通”；出于兼容，MCP 服务键名 `kytdl`、工具名、`kytdl.cmd` / `kytdl-mcp.cmd` 等内部标识保持不变。
+说明：产品名为“科研通下载器”；出于兼容，MCP 服务键名 `kytdl`、工具名、`kytdl.cmd` / `kytdl-mcp.cmd` 等内部标识保持不变。
 
 先启动项目目录中的 `启动KYTDL.cmd`（服务要在运行）。MCP 使用本机 stdio，不新增网络监听，本工具自己不运行任何 AI 模型。
 

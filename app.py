@@ -362,7 +362,7 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                     store.event("AI 已分析预览的脱敏报告，结果仅供参考，未执行任何操作。")
                     return self.respond(200, result)
                 elif path == "/api/report/issue":
-                    url = applog.issue_url(app_info.REPO_URL, "文献通 问题反馈", "请描述遇到的问题，并附上已保存的错误报告（.md）。提交前请确认报告中不含个人信息。")
+                    url = applog.issue_url(app_info.REPO_URL, "科研通下载器 问题反馈", "请描述遇到的问题，并附上已保存的错误报告（.md）。提交前请确认报告中不含个人信息。")
                     if not url: raise ValueError("仓库地址未设置，无法打开 GitHub Issue")
                     return self.respond(200, {"url": url})
                 elif path == "/api/ai/recognize":
@@ -777,7 +777,7 @@ def main(argv=None):
     tray = None
     try:
         server = make_server(args.port)
-        print(f"AbleSci demo: http://127.0.0.1:{server.server_port}", flush=True)
+        print(f"{app_info.APP_NAME_ASCII}: http://127.0.0.1:{server.server_port}", flush=True)
         if args.tray:
             try:
                 import launcher

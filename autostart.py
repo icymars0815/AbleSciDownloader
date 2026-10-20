@@ -74,7 +74,7 @@ class Autostart:
             shortcut.TargetPath = str(self.target())
             shortcut.Arguments = "launcher.py --background"
             shortcut.WorkingDirectory = str(self.root)
-            shortcut.Description = "文献通 (KYTDL) background monitor (service and tray only, no window)"
+            shortcut.Description = "科研通下载器 (KYTDL) background monitor (service and tray only, no window)"
             shortcut.WindowStyle = 7
             shortcut.save()
         finally:

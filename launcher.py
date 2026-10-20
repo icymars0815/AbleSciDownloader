@@ -37,7 +37,7 @@ def start_service():
         if running():
             return
         if process.poll() is not None:
-            raise SystemExit("无法启动工作台，端口可能已被占用或已有实例在运行。请查看 data/logs 中的 server 日志。")
+            raise SystemExit("无法启动科研通下载器，端口可能已被占用或已有实例在运行。请查看 data/logs 中的 server 日志。")
         time.sleep(.3)
     raise SystemExit("启动超时，请查看 data/logs 中的 server 日志。")
 

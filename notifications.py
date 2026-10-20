@@ -148,7 +148,7 @@ class Notifier:
         if not lines:
             return False
         text = "免打扰期间共 %d 条通知：" % len(lines) + "；".join(lines[:3]) + ("…" if len(lines) > 3 else "")
-        self._show("文献通 通知汇总", text[:250])
+        self._show("科研通下载器 通知汇总", text[:250])
         return True
 
     def pending(self):

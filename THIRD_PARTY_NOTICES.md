@@ -1,6 +1,6 @@
 # 第三方许可说明
 
-文献通（内部代号 KYTDL）自身代码以 **GNU AGPL-3.0** 发布（见 LICENSE）。选择 AGPL 是因为核心依赖 PyMuPDF 采用 AGPL-3.0（或 Artifex 商业许可），这样整个项目在分发时与其完全兼容。
+科研通下载器（内部代号 KYTDL）自身代码以 **GNU AGPL-3.0** 发布（见 LICENSE）。选择 AGPL 是因为核心依赖 PyMuPDF 采用 AGPL-3.0（或 Artifex 商业许可），这样整个项目在分发时与其完全兼容。
 
 本项目不包含、不分发任何第三方文献 PDF；`data/`、`test_papers/` 已从版本库排除，示例 PDF 为程序生成的虚构内容。未复制 Zotero、papis 等 AGPL/GPL 项目的代码，只参考其公开描述的思路。
 

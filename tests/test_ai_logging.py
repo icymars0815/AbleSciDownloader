@@ -267,7 +267,7 @@ class ServerTests(unittest.TestCase):
         self.server.store.log.write("pipeline", "tick", "error", "ValueError", "bad me@example.com")
         out = self.server.mcp_api.do_error_report({})
         self.assertTrue(out["redacted"])
-        self.assertIn("# 文献通 错误报告", out["report_markdown"])
+        self.assertIn("# 科研通下载器 错误报告", out["report_markdown"])
         self.assertNotIn("me@example.com", json.dumps(out, ensure_ascii=False))
 
     def test_first_run_flag_and_ack(self):

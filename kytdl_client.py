@@ -11,7 +11,7 @@ from urllib.request import Request, urlopen
 DEFAULT_BASE = "http://127.0.0.1:8769"
 POLL_SECONDS = 2
 WAIT_MAX_SECONDS = 600
-NOT_RUNNING = "请先启动本地文献工作台：http://127.0.0.1:8769/"
+NOT_RUNNING = "请先启动科研通下载器：http://127.0.0.1:8769/"
 
 
 class ServiceDown(Exception):

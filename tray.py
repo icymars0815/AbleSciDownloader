@@ -37,7 +37,7 @@ class Tray:
         self.shown = None
 
     def title(self):
-        return "文献通 · " + self.label()
+        return "科研通下载器 · " + self.label()
 
     def menu_items(self):
         p = self.pystray
@@ -64,7 +64,7 @@ class Tray:
             from PIL import Image, ImageDraw
             self.pystray, self.image_module, self.draw_module = pystray, Image, ImageDraw
         label = self.label()
-        self.icon = self.pystray.Icon("WenXianTong", make_image(self.image_module, self.draw_module, label), self.title(),
+        self.icon = self.pystray.Icon("AbleSciDownloader", make_image(self.image_module, self.draw_module, label), self.title(),
                                       self.pystray.Menu(*self.menu_items()))
         self.shown = label
         self.thread = threading.Thread(target=self.icon.run, daemon=True, name="kytdl-tray")

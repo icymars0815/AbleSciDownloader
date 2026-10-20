@@ -598,7 +598,7 @@ class TrayTests(unittest.TestCase):
             state["label"] = "待处理 2 条"
             with patch("tray.make_image", return_value="img2"):
                 tray.refresh()
-            self.assertEqual("文献通 · 待处理 2 条", icon.title)
+            self.assertEqual("科研通下载器 · 待处理 2 条", icon.title)
             tray.notify("t", "m")
             icon.notify.assert_called_with("m", "t")
 

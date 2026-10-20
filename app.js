@@ -1,5 +1,5 @@
 "use strict";
-/* 文献通 (KYTDL) local UI. Talks only to the local app backend (same origin). */
+/* 科研通下载器 (KYTDL) local UI. Talks only to the local app backend (same origin). */
 const $ = id => document.getElementById(id);
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 // This is a local app; never describe it (or the source site) as a web page.
@@ -375,7 +375,7 @@ function syncAiButtons() {
 }
 
 const DISCLAIMER_SHORT = [
-  '文献通为第三方个人开源工具，免费开源（AGPL-3.0），仅供学习交流使用；并非科研通（ablesci.com）官方程序，与科研通及其运营方无任何隶属、合作或授权关系。如您是付费获得本软件，则属受骗。',
+  '科研通下载器为第三方个人开源工具，免费开源（AGPL-3.0），仅供学习交流使用；并非科研通（ablesci.com）官方程序，与科研通及其运营方无任何隶属、合作或授权关系。如您是付费获得本软件，则属受骗。',
   '获取文献时，本软件先查询合法的免费开放获取（OA）来源，能直接下载的即直接下载；查询不到时，才使用您本人的科研通账户在科研通网站发布求助，并通过科研通提供的下载渠道获取应助文件。所有科研通操作均以您本人账户进行，须遵守科研通规则，积分消耗由您自行承担。',
   '仅限个人学习与科研使用。请遵守著作权法、出版商许可及科研通规则；免费全文的许可各不相同，再利用前请查看具体许可。本软件不使用 Sci-Hub 等影子图书馆。',
   '风险提示：自动同步、发布、采纳、驳回可能因科研通规则变化而出错，并可能导致扣分、功能限制或封号。建议保持各项确认开启。因使用本软件造成的账号、积分或数据损失，作者不承担责任。',
@@ -396,7 +396,7 @@ function maybeOpenDisclaimer() {
 }
 
 const DISCLAIMER_FULL = [
-  ['1. 软件性质：第三方、免费、开源', ['文献通为第三方个人开源工具，并非科研通（ablesci.com）官方程序，与科研通及其运营方无任何隶属、合作或授权关系。',
+  ['1. 软件性质：第三方、免费、开源', ['科研通下载器为第三方个人开源工具，并非科研通（ablesci.com）官方程序，与科研通及其运营方无任何隶属、合作或授权关系。',
     '本软件免费开源（GNU AGPL-3.0），仅供学习交流使用。如您是付费购买的本软件，则属受骗。未经作者许可，不得将本软件打包后收费销售或用于其他商业目的。']],
   ['2. 获取方式与用途限制', ['获取文献时，本软件先查询合法的免费开放获取（OA）来源（如 OpenAlex、Europe PMC、PubMed Central、Unpaywall、arXiv 等），能直接下载的即直接下载。',
     '仅当上述来源查询不到时，本软件才使用用户本人的科研通账户，在科研通网站发布求助，并通过科研通提供的下载渠道下载应助文件。所有科研通操作均以用户本人账户进行，须遵守科研通规则，积分消耗由用户自行承担。',
@@ -475,7 +475,7 @@ function tabAbout() {
   const hidden = !!state.preferences?.home_notice_hidden, ab = state.about || {};
   const full = DISCLAIMER_FULL.map(([h, ps]) => `<h5>${esc(h)}</h5>${ps.map(p => `<p>${esc(p)}</p>`).join('')}`).join('');
   return `<h4>关于</h4>
-<div class="aboutbox"><p><b>文献通为第三方个人开源工具，免费开源，仅供学习交流使用；并非科研通官方程序，与科研通无隶属、合作或授权关系。如您是付费获得，则属受骗。</b></p>
+<div class="aboutbox"><p><b>科研通下载器为第三方个人开源工具，免费开源，仅供学习交流使用；并非科研通官方程序，与科研通无隶属、合作或授权关系。如您是付费获得，则属受骗。</b></p>
 <p>支持科研通：<a href="https://www.ablesci.com/my/point-donate" target="_blank" rel="noopener noreferrer">捐助积分 ↗</a>　<a href="https://www.ablesci.com/post/detail?id=P7j5Qn" target="_blank" rel="noopener noreferrer">无偿捐助 ↗</a>（均为科研通官方入口）</p></div>
 <p>版本：<b>${esc(ab.version || '未知')}</b>　声明版本：${esc(ab.disclaimer_version || '')}　许可证：GNU AGPL-3.0</p>
 <p>仓库地址：${ab.repo_url ? `<a href="${esc(ab.repo_url)}" target="_blank" rel="noopener noreferrer">${esc(ab.repo_url)} ↗</a>` : '未设置'}</p>

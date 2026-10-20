@@ -259,7 +259,7 @@ def build_report(store, error_ids=None, extra=None, now=None):
     chosen = [e for e in errors if e.get("id") in set(error_ids)] if error_ids else errors[:10]
     env = environment()
     stamp = (now or datetime.now()).strftime("%Y-%m-%d %H:%M")
-    lines = ["# 文献通 错误报告", "", "生成时间：" + stamp, "", "## 环境", "",
+    lines = ["# 科研通下载器 错误报告", "", "生成时间：" + stamp, "", "## 环境", "",
              "- App 版本：%s（提交 %s）" % (env["app_version"], env["commit"]), "- 系统：" + env["windows"], "- Python：" + env["python"],
              "- Chrome：" + env["chrome"], "- 依赖：" + "，".join("%s %s" % kv for kv in env["dependencies"].items()), "", "## 所选错误", ""]
     if chosen:
