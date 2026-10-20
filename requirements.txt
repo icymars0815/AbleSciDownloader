@@ -1,0 +1,6 @@
+playwright>=1.50,<2
+PyMuPDF>=1.24,<2
+mcp>=1.27,<2
+olefile>=0.47,<1
+pystray==0.19.5
+Pillow==13.0.0

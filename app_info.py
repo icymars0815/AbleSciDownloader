@@ -1,0 +1,6 @@
+"""App identity constants. Product name 文献通 (ASCII: WenXianTong); internal identifiers stay KYTDL/kytdl for compatibility. REPO_URL is the one place the GitHub address is set; empty means "not filled in yet"."""
+APP_NAME = "文献通"
+APP_NAME_ASCII = "WenXianTong"
+APP_VERSION = "0.9.0"
+REPO_URL = "https://github.com/icymars0815/WenXianTong"
+DISCLAIMER_VERSION = "2026-10-21"

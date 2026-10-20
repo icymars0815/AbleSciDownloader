@@ -1,0 +1,157 @@
+<!doctype html>
+<html lang="zh-CN" data-bs-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="color-scheme" content="light dark">
+<title>文献通</title>
+<script>(function(){var m=matchMedia('(prefers-color-scheme: dark)'),f=function(){document.documentElement.setAttribute('data-bs-theme',m.matches?'dark':'light')};f();m.addEventListener('change',f)})();</script>
+<link rel="stylesheet" href="/assets/vendor/bootstrap-5.3.3/bootstrap.min.css">
+<link rel="stylesheet" href="/assets/styles.css">
+</head>
+<body>
+<a class="skip visually-hidden-focusable" href="#tasks">跳到任务列表</a>
+
+<nav class="navbar bg-body-tertiary border-bottom">
+  <div class="container-xxl gap-3 flex-wrap">
+    <div class="d-flex align-items-center gap-2">
+      <div class="logo" aria-hidden="true">文</div>
+      <div>
+        <h1 class="h5 mb-0">文献通</h1>
+        <div class="small text-body-secondary">WenXianTong · 本地运行</div>
+      </div>
+    </div>
+    <div class="d-flex align-items-center gap-3 flex-wrap" aria-label="账户与积分">
+      <label class="d-flex flex-column small text-body-secondary">当前账户
+        <select id="accountSelect" class="form-select form-select-sm" aria-label="当前账户"></select>
+      </label>
+      <div class="d-flex flex-column lh-sm" title="积分低于 500 时逐条求助，达到 500 可批量求助">
+        <span class="small text-body-secondary">积分</span>
+        <b id="pointsValue" class="fs-5">—</b>
+        <span class="small text-body-secondary" id="tierLabel">积分 ≥ 500 可批量求助</span>
+      </div>
+      <span class="badge rounded-pill text-bg-secondary" id="mode">本地模式 · AI 关闭</span>
+      <span class="badge rounded-pill text-bg-light border" id="workerChip" title="后台下载线程状态">下载线程：空闲</span>
+      <button data-action="settings" data-id="pipeline" class="btn btn-outline-secondary btn-sm" id="monitorChip" title="后台监控状态；点击打开设置">后台监控：—</button>
+      <button data-action="settings" class="btn btn-primary btn-sm" id="settingsBtn">设置</button>
+    </div>
+  </div>
+</nav>
+
+<div class="container-xxl py-3 shell">
+  <aside class="alert alert-secondary d-flex justify-content-between align-items-start gap-3 small" id="declare" aria-label="关于本软件" hidden>
+    <div class="d-flex flex-column gap-1">
+      <span><b>文献通为免费开源的第三方个人工具，并非科研通官方程序，与科研通无隶属关系；如您是付费获得，则属受骗。</b> <a href="#" data-action="settings" data-id="about">完整声明</a></span>
+      <span><b>推荐使用科研通，欢迎支持</b>
+        <a class="ms-2" href="https://www.ablesci.com/my/point-donate" target="_blank" rel="noopener noreferrer">捐助积分 ↗</a>
+        <a class="ms-2" href="https://www.ablesci.com/post/detail?id=P7j5Qn" target="_blank" rel="noopener noreferrer">无偿捐助 ↗</a></span>
+    </div>
+    <button data-action="hide-home-notice" class="btn btn-sm btn-outline-secondary flex-shrink-0" aria-label="关闭提示">关闭</button>
+  </aside>
+
+  <section class="card mb-3" id="pipelineStrip" hidden aria-label="自动流程状态">
+    <div class="card-body py-2 d-flex justify-content-between align-items-center gap-3 flex-wrap">
+      <div class="d-flex align-items-center gap-3 flex-wrap">
+        <span class="badge rounded-pill gate" id="gateChip"></span>
+        <div class="d-flex flex-column">
+          <span class="small text-body-secondary">下一步</span>
+          <b id="nextLabel">—</b>
+          <small class="text-body-secondary" id="nextReason"></small>
+        </div>
+      </div>
+      <div class="d-flex align-items-center gap-3">
+        <span class="small text-body-secondary" id="pipeState"></span>
+        <button data-action="pipeline-step" id="stepBtn" class="btn btn-primary btn-sm">执行下一步</button>
+      </div>
+    </div>
+  </section>
+
+  <div class="row g-3">
+    <aside class="col-lg-4 col-xl-3 d-flex flex-column gap-3">
+      <section class="card import">
+        <div class="card-body">
+          <h2 class="h6">添加文献</h2>
+          <p class="small text-body-secondary"><b>建议提供 DOI</b>，识别率最高。可直接粘贴引用、标题、作者或 DOI，无需固定格式。</p>
+          <textarea id="input" class="form-control" rows="5" aria-label="文献清单" placeholder="粘贴 DOI、参考文献、标题或作者…"></textarea>
+          <div id="importPreview" class="small text-body-secondary mt-2" aria-live="polite"></div>
+          <div class="d-flex flex-wrap gap-2 mt-2">
+            <button data-action="import" class="btn btn-primary btn-sm">加入队列</button>
+            <button data-action="choose-file" class="btn btn-outline-secondary btn-sm">导入文件</button>
+            <button data-action="ai-organize" id="aiOrganizeBtn" disabled title="请先在设置中开启 AI 辅助" class="btn btn-outline-secondary btn-sm">AI 整理</button>
+            <input type="file" id="textfile" accept=".csv,.doc,.docx,.txt,.tsv,.ris,.bib,.nbib" hidden>
+          </div>
+          <p class="small text-body-secondary mt-2 mb-1" id="aiOrganizeHint" aria-live="polite">请先在设置中开启 AI 辅助</p>
+          <p class="small text-body-secondary mb-0">支持 CSV、DOC、DOCX、RIS、BibTeX。</p>
+        </div>
+      </section>
+
+      <section class="card conn">
+        <div class="card-body">
+          <h2 class="h6">账户操作</h2>
+          <div class="d-flex gap-2">
+            <button data-action="login" data-busy class="btn btn-outline-secondary btn-sm flex-fill">登录</button>
+            <button data-action="sync" data-busy class="btn btn-outline-secondary btn-sm flex-fill">同步求助</button>
+            <button data-action="signin" data-busy class="btn btn-outline-secondary btn-sm flex-fill">每日签到</button>
+          </div>
+          <p class="small text-body-secondary mt-2">同步使用当前账户已保存的登录状态，不弹出窗口，仅读取科研通求助列表的第一页。</p>
+          <div id="checkinStatus" class="small text-body-secondary" role="status"></div>
+          <div id="browserState" class="small text-body-secondary" role="status">当前无进行中的操作</div>
+          <button data-action="stop" class="btn btn-outline-danger btn-sm w-100 mt-2">停止当前操作</button>
+        </div>
+      </section>
+    </aside>
+
+    <main class="col-lg-8 col-xl-9">
+      <section class="card">
+        <div class="card-body">
+          <div class="d-flex justify-content-between align-items-start gap-3 flex-wrap">
+            <div>
+              <h2 class="h5 mb-0">任务列表</h2>
+              <small class="text-body-secondary" id="queueSummary">当前账户的文献队列</small>
+            </div>
+            <div class="d-flex align-items-center gap-3">
+              <a href="/api/export" download="literature-queue.csv">导出记录 ↗</a>
+              <button data-action="demo" class="btn btn-link btn-sm">载入演示数据</button>
+            </div>
+          </div>
+          <div class="d-flex flex-wrap gap-2 my-3" role="group" aria-label="按状态筛选">
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="all" aria-pressed="false">全部 <span class="badge text-bg-light" id="count-all">0</span></button>
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="queued" aria-pressed="false">排队 <span class="badge text-bg-light" id="count-queued">0</span></button>
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="downloading" aria-pressed="false">下载中 <span class="badge text-bg-light" id="count-downloading">0</span></button>
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="review" aria-pressed="false">待审核 <span class="badge text-bg-light" id="count-review">0</span></button>
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="downloaded" aria-pressed="false">已下载 <span class="badge text-bg-light" id="count-downloaded">0</span></button>
+            <button class="btn btn-outline-secondary btn-sm rounded-pill filter" data-action="filter" data-filter="done" aria-pressed="false">已完结 <span class="badge text-bg-light" id="count-done">0</span></button>
+          </div>
+          <p class="small text-body-secondary">说明：DOI、标题、作者和摘要在本机核对，作者或摘要缺失时标为“未核实”。文件完整性、版本及 AI 辅助结果仍需人工复核。“排队”表示已导入或同步、尚未开始下载。</p>
+          <div id="tasks"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <footer class="d-flex justify-content-between align-items-center flex-wrap gap-2 mt-3 small text-body-secondary">
+    <span>本地应用 · 文件和记录保存在本机 · 演示数据为虚构内容</span>
+    <span id="repoLink">仓库地址未设置</span>
+    <button data-action="shutdown" class="btn btn-link btn-sm">退出后台服务</button>
+  </footer>
+</div>
+
+<div class="modal" id="settings" tabindex="-1" aria-labelledby="settingsTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"></div></div></div>
+<div class="modal" id="dialog" tabindex="-1" aria-hidden="true"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content"></div></div></div>
+<div class="modal" id="disclaimer" tabindex="-1" aria-labelledby="disclaimerTitle" aria-hidden="true" data-bs-backdrop="static" data-bs-keyboard="false"><div class="modal-dialog modal-dialog-scrollable"><div class="modal-content"></div></div></div>
+<div class="modal" id="intake" tabindex="-1" aria-labelledby="intakeTitle" aria-hidden="true"><div class="modal-dialog modal-xl modal-dialog-scrollable"><div class="modal-content"></div></div></div>
+
+<button class="btn btn-primary position-fixed bottom-0 end-0 m-3 shadow" id="msgFab" type="button" data-bs-toggle="offcanvas" data-bs-target="#msgpanel" aria-controls="msgpanel">消息 <span id="msgBadges"></span></button>
+<div class="offcanvas offcanvas-end" id="msgpanel" tabindex="-1" data-bs-scroll="true" data-bs-backdrop="false" aria-label="消息面板">
+  <div class="offcanvas-header"><h2 class="offcanvas-title h6">消息</h2><button type="button" class="btn-close" data-bs-dismiss="offcanvas" aria-label="关闭"></button></div>
+  <div class="offcanvas-body" id="msgBody"></div>
+</div>
+
+<div class="toast-container position-fixed bottom-0 start-50 translate-middle-x p-3" style="z-index:2000">
+  <div id="toast" class="toast text-bg-dark" role="alert" aria-live="assertive" aria-atomic="true"><div class="toast-body" id="toastBody"></div></div>
+</div>
+<script>const TOKEN=__TOKEN__;let state={items:[],events:[]};</script>
+<script src="/assets/vendor/bootstrap-5.3.3/bootstrap.bundle.min.js"></script>
+<script src="/assets/app.js"></script>
+</body>
+</html>

@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "kytdl": {
+      "type": "stdio",
+      "command": "cmd",
+      "args": [
+        "/c",
+        "kytdl-mcp.cmd"
+      ]
+    }
+  }
+}
