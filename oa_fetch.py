@@ -669,7 +669,8 @@ def browser_download(url, dest_path, timeout=BROWSER_CAP, visible=False, profile
             profile.mkdir(parents=True, exist_ok=True)
             options = dict(headless=not visible, accept_downloads=True, downloads_path=tmp)
             try:
-                context = pw.chromium.launch_persistent_context(str(profile), channel="chrome", **options)
+                from runtime_paths import browser_options
+                context = pw.chromium.launch_persistent_context(str(profile), **browser_options(), **options)
             except Exception:
                 context = pw.chromium.launch_persistent_context(str(profile), **options)
             try:

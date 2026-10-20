@@ -4,6 +4,7 @@ BrowserAgent stays free for sync/publish/adopt/reject/sign-in. Both share ONE re
 most one download at a time. All download safety rules live in BrowserAgent.download, which this class reuses."""
 import queue
 import threading
+from runtime_paths import browser_options
 
 from browser_agent import BrowserAgent, SessionExpired
 
@@ -70,7 +71,7 @@ class DownloadWorker(BrowserAgent):
             except Exception:
                 pass
         self.playwright = sync_playwright().start()
-        self.browser = self.playwright.chromium.launch(channel="chrome", headless=True)
+        self.browser = self.playwright.chromium.launch(**browser_options(), headless=True)
         self.context = self.browser.new_context(storage_state=self._state, accept_downloads=True, viewport={"width": 1080, "height": 850})
         self.page = self.context.new_page()
         self.page.set_default_timeout(12000)

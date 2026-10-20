@@ -8,7 +8,7 @@
 
 ## 启动器 kytdl-mcp.cmd
 
-`<项目目录>\kytdl-mcp.cmd` 会根据自身所在位置找到同目录下的 `.venv\Scripts\python.exe` 与 `mcp_server.py`，因此无论客户端从哪个工作目录启动它都能正常运行。首次使用前请先运行一次 `setup.cmd` 建立运行环境。
+`<项目目录>\kytdl-mcp.cmd` 优先使用免安装包里的 `runtime\python\python.exe`，源码版则使用 `.venv\Scripts\python.exe`，并找到同目录的 `mcp_server.py`；不依赖客户端的工作目录。免安装包无需 setup；源码版首次使用前运行 `setup.cmd`。
 
 ## Claude Code
 

@@ -10,6 +10,7 @@ import webbrowser
 from pathlib import Path
 from urllib.error import URLError
 from urllib.request import urlopen
+from runtime_paths import bundled_browser
 
 root = Path(__file__).resolve().parent
 address = "http://127.0.0.1:8769"
@@ -45,8 +46,9 @@ def start_service():
 def open_window(target=None):
     """Open the app window; target may be the panel URL, e.g. with an #item=<id> fragment."""
     target = target or address
-    if sys.platform == "win32" and CHROME.exists():
-        subprocess.Popen([str(CHROME), "--app=" + target, "--user-data-dir=" + str(root / "data" / "app-ui-profile"),
+    browser = bundled_browser(root) or CHROME
+    if sys.platform == "win32" and browser.exists():
+        subprocess.Popen([str(browser), "--app=" + target, "--user-data-dir=" + str(root / "data" / "app-ui-profile"),
                           "--disable-extensions", "--window-size=1440,1000"],
                          creationflags=subprocess.CREATE_NO_WINDOW)
     else:

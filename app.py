@@ -31,6 +31,7 @@ from task_states import workflow_state
 from pipeline import PIPELINE_RULES_VERSION, Pipeline, stage_of, tier, gate, next_step, rules_ok, has_session
 from ai_service import AIService
 import app_info
+from runtime_paths import python_executable
 import applog
 import notifications
 import intake
@@ -222,7 +223,7 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                                 ranges={k: list(v) for k, v in LIMIT_RANGES.items()},
                                 publish_recent=pipeline.publish_limiter.recent(), publish_wait_seconds=round(pipeline.publish_limiter.wait_seconds()))))
             if path == "/api/mcp-config":
-                command = str(ROOT / ".venv" / "Scripts" / "python.exe")
+                command = str(python_executable(ROOT))
                 script = str(ROOT / "mcp_server.py")
                 claude = {"mcpServers": {"kytdl": {"type": "stdio", "command": command, "args": [script]}}}
                 codex = '[mcp_servers.kytdl]\ncommand = ' + json.dumps(command) + '\nargs = [' + json.dumps(script) + ']\nstartup_timeout_sec = 20\ntool_timeout_sec = 660\n'

@@ -1,6 +1,6 @@
 """App identity constants. Product name 科研通下载器 (ASCII: AbleSciDownloader); internal identifiers stay KYTDL/kytdl for compatibility. REPO_URL is the one place the GitHub address is set; empty means "not filled in yet"."""
 APP_NAME = "科研通下载器"
 APP_NAME_ASCII = "AbleSciDownloader"
-APP_VERSION = "0.9.0"
+APP_VERSION = "0.9.1"
 REPO_URL = "https://github.com/icymars0815/AbleSciDownloader"
 DISCLAIMER_VERSION = "2026-10-21"

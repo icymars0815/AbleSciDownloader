@@ -21,7 +21,9 @@
 
 ## 安装与运行（Windows）
 
-需要 Windows 10/11、Python 3.12 和 Google Chrome。
+**推荐免安装版（Windows 10/11 x64）：** 在 [Releases](https://github.com/icymars0815/AbleSciDownloader/releases) 下载 `windows-x64.zip`，完整解压后双击 `启动科研通下载器.cmd`。包内已有 Python 和依赖；首次自动从官方获取约 200 MB 浏览器到本目录，完成后自动打开。无需另装环境、输入命令或管理员权限；首次准备和文献操作需要联网。详见 [免安装说明](docs/PORTABLE.md)。
+
+开发者使用源码版时，需要 Python 3.12/3.13 和 Google Chrome：
 
 1. 下载或克隆本仓库到任意文件夹。
 2. 双击 `setup.cmd`，创建虚拟环境并安装锁定版本的依赖。
@@ -41,7 +43,7 @@
 
 - 不支持断点续传：科研通下载页按整文件下载，换线路或重试都从头开始。
 - 下载速度取决于科研通文件节点与时段，程序只能在三条线路中选择最快的一条。
-- 目前不是免安装 EXE，换电脑需重新运行 `setup.cmd`。
+- 免安装 ZIP 仅提供 Windows x64；完整解压后使用。源码 ZIP 不含运行环境，需按源码安装步骤配置。
 
 ## 开发
 

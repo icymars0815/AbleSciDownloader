@@ -4,6 +4,7 @@ import queue
 import re
 import threading
 import applog
+from runtime_paths import browser_options
 import time
 from urllib.parse import urljoin
 from datetime import datetime, timedelta
@@ -278,7 +279,7 @@ class BrowserAgent:
         self.playwright = sync_playwright().start()
         self.interactive = interactive
         self.context = self.playwright.chromium.launch_persistent_context(
-            str(self.accounts.account_root() / "browser-profile"), channel="chrome", headless=not interactive,
+            str(self.accounts.account_root() / "browser-profile"), **browser_options(), headless=not interactive,
             args=["--app=" + BASE + "/site/login", "--window-size=1080,850"] if interactive else [],
             accept_downloads=True, viewport={"width": 1080, "height": 850})
         self.page = self.context.pages[0] if self.context.pages else self.context.new_page()

@@ -2,6 +2,7 @@
 pythonw.exe from the project .venv with "launcher.py --background". No registry, no administrator rights; default OFF."""
 import os
 import sys
+from runtime_paths import python_executable
 from pathlib import Path
 
 LINK_NAME = "KYTDL Background Monitor.lnk"   # ASCII: WScript.Shell mangles non-ASCII shortcut names
@@ -30,7 +31,7 @@ class Autostart:
         return folder / LINK_NAME, folder / CMD_NAME
 
     def target(self):
-        return self.root / ".venv" / "Scripts" / "pythonw.exe"
+        return python_executable(self.root, windowed=True)
 
     def enabled(self):
         if not self.allowed:
