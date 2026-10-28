@@ -144,9 +144,9 @@ def classify(item, screened_done=True):
             return done("pending", "等待筛选", "")
         return done("unscreened", "未做免费全文筛选", "向科研通求助", True, True)
     if st == "not_oa":
-        return done("not_oa", "无免费全文", "向科研通求助", True, True)
+        return done("not_oa", "暂未找到免费全文", "可继续向科研通求助", True, True)
     if st == "failed":
-        return done("oa_failed", "免费全文下载失败", "向科研通求助", True, True)
+        return done("oa_failed", "免费全文暂未取得", "可继续向科研通求助", True, True)
     if st == "skipped":
         return done("skipped", "已改走科研通", "向科研通求助", True, True)
     if st == "needs_human":

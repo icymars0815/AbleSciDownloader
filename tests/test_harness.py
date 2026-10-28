@@ -27,7 +27,7 @@ EXPECTED_TOOLS = {
     "workbench_status", "list_accounts", "switch_account", "list_papers", "preview_references", "import_references", "query_public_metadata", "search_literature",
     "verify_paper", "website_action", "reject_paper", "stop_website_task", "unparsed_segments", "batch_status", "review_table", "confirm_batch",
     "download_paper", "download_progress", "wait_for", "get_result", "render_pages", "submit_assist_result", "error_report", "monitor_status",
-    "events", "download_settings_get", "oa_lookup", "oa_fetch", "open_panel"}
+    "events", "download_settings_get", "oa_lookup", "oa_fetch", "open_panel", "continue_authorized_request"}
 
 
 def start(folder, permission=False, session=True):
@@ -215,6 +215,8 @@ class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
                     self.assertFalse(error, done)
                     self.assertEqual(2, done["confirmed"])
                     items = {i["id"]: i for i in server.store.snapshot()["items"]}
+                    self.assertTrue(all(items[i].get("request_mcp_auto_publish") for i in ids[:2]))
+                    self.assertFalse(items[ids[2]].get("request_mcp_auto_publish", False))
                     self.assertTrue(items[ids[0]]["request_confirmed"] and items[ids[1]]["request_confirmed"])
                     self.assertFalse(items[ids[2]].get("request_confirmed"))
                     self.assertEqual(30, items[ids[0]]["request_reward"])

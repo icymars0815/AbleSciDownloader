@@ -12,3 +12,7 @@ class OaWaitStateTests(unittest.TestCase):
         finished = item_states(paper, {"pipeline": {"oa_running": None}})
         self.assertIn("needs_human", finished)
         self.assertIn("oa_finished", finished)
+
+    def test_confirmed_site_request_does_not_stop_for_oa_captcha(self):
+        paper = {"id": "p1", "stage": "queued", "request_confirmed": True, "oa_check": {"status": "needs_human"}}
+        self.assertNotIn("needs_human", item_states(paper, {"pipeline": {"oa_running": None}}))

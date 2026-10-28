@@ -174,6 +174,17 @@ class MonitorFlowTests(unittest.TestCase):
     def finish_sync(self, error=None):
         self.agent.on_done("sync", None, error)
 
+    def test_confirmed_mcp_work_does_not_raise_spurious_action_prompt(self):
+        pending = waiting("a", 10, publish_action={"status": "attempted"},
+                          request_confirmed=True, oa_check={"status": "needs_human"})
+        self.agent.busy = True
+        self.monitor.scan([pending])
+        self.assertEqual([], self.toasts)
+        self.agent.busy = False
+        pending["publish_action"] = {"status": "uncertain"}
+        self.monitor.scan([pending])
+        self.assertEqual(1, len(self.toasts))
+
     def test_tick_waits_for_due_time_and_session(self):
         self.put(waiting("a", 10))
         self.assertIsNone(self.monitor.tick(T))                # START_DELAY not reached

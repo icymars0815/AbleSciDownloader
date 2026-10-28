@@ -122,7 +122,7 @@ def check_website_permission():
 
 def public_item(item):
     # Exclude PDF text excerpts, disk paths, session/account data and error screenshots.
-    result = {key: item.get(key) for key in ("id", "title", "doi", "authors", "source", "status", "website_status", "rejection", "reject_action")}
+    result = {key: item.get(key) for key in ("id", "title", "doi", "authors", "source", "status", "website_status", "rejection", "reject_action", "acquisition")}
     v = item.get("verification") or {}
     result["verification"] = {key: v.get(key) for key in ("status", "reason", "title_score", "primary_dois", "pages")}
     b = v.get("bibliography") or {}
@@ -296,6 +296,12 @@ def confirm_batch(batch_id: str, item_ids: list[str] | None = None, rewards: dic
                          if reply["permission"] else "The MCP 科研通 permission is off in the App; the user must enable it before confirm works.")
         return reply
     return api("/api/mcp/confirm", {"batch_id": batch_id, "confirm_token": confirm_token, "item_ids": item_ids, "rewards": rewards, "confirmed": confirmed})
+
+
+@tool(SITE, SPEND)
+def continue_authorized_request(paper_id: str) -> dict:
+    """Resume background handling for exactly one previously confirmed request. Does not authorize a new item or bypass an account gate. Site errors or ambiguous outcomes require human review."""
+    return api("/api/mcp/auto-continue", {"id": paper_id})
 
 
 # ---------- download ----------

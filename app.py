@@ -28,7 +28,7 @@ from import_files import import_file
 from credential_vault import CredentialVault, AIKeyVault, OpenAlexKeyVault
 from accounts import Accounts
 from task_states import workflow_state
-from pipeline import PIPELINE_RULES_VERSION, Pipeline, stage_of, tier, gate, next_step, rules_ok, has_session
+from pipeline import PIPELINE_RULES_VERSION, Pipeline, stage_of, tier, gate, next_step, rules_ok, has_session, acquisition_state
 from ai_service import AIService
 import app_info
 from runtime_paths import python_executable
@@ -176,9 +176,10 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                 except Exception:
                     pass
                 snapshot = store.snapshot()
-                snapshot["items"] = [dict(i, workflow=workflow_state(i), stage=stage_of(i), deletion=deletion.view(i)) for i in snapshot["items"]
-                                     if i.get("source") == "demo" or i.get("account_id", "default") == accounts.active_id]
                 snapshot["account"] = snapshot.get("account_metrics", {}).get(accounts.active_id, {})
+                active_items = [i for i in snapshot["items"] if i.get("source") == "demo" or i.get("account_id", "default") == accounts.active_id]
+                snapshot["items"] = [dict(i, workflow=workflow_state(i), stage=stage_of(i), deletion=deletion.view(i),
+                                          acquisition=acquisition_state(i, gate(active_items, snapshot["account"].get("points"), i.get("request_reward")))) for i in active_items]
                 snapshot.pop("account_metrics", None)
                 for internal in ("monitor", "notifications", "publish_times"):
                     snapshot.pop(internal, None)

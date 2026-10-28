@@ -359,7 +359,7 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual("oa_fetch", plan([imp()], prefs={})["action"])
 
     def test_needs_human_item_does_not_block_others(self):
-        held = imp("h", oa_check=dict(status="needs_human", manual_url="https://p.example/x"), created="2026-10-19T09:00:00")
+        held = imp("h", request_confirmed=False, oa_check=dict(status="needs_human", manual_url="https://p.example/x"), created="2026-10-19T09:00:00")
         other = imp("o", oa_check=dict(status="failed"), created="2026-10-19T10:00:00")
         step = plan([held, other])
         self.assertEqual(("prepare", "o"), (step["action"], step["item_id"]))
@@ -369,6 +369,8 @@ class PlannerTests(unittest.TestCase):
         self.assertEqual(("wait_user", True), (alone["action"], alone["requires_user"]))
         skipped = imp("h", oa_check=dict(status="skipped"))
         self.assertEqual("prepare", plan([skipped])["action"])
+        authorized = imp("h", oa_check=dict(status="needs_human"))
+        self.assertEqual("prepare", plan([authorized])["action"])
 
     def test_done_via_oa_stage(self):
         self.assertEqual("done", stage_of(imp(done_via="oa", pdf="oa/q.pdf", status="checked")))

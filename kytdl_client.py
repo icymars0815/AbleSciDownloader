@@ -104,7 +104,7 @@ def item_states(item, state):
         names.add("downloaded")
     check = item.get("oa_check") or {}
     running = (state.get("pipeline") or {}).get("oa_running") == item.get("id")
-    if check.get("status") == "needs_human" and not running:
+    if check.get("status") == "needs_human" and not running and not item.get("request_confirmed"):
         names.add("needs_human")
     if check and not running:
         names.add("oa_finished")

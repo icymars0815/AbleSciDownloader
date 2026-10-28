@@ -14,7 +14,7 @@ from accounts import Accounts
 from app import make_server
 from browser_agent import BASE, BrowserAgent
 from core import Store
-from pipeline import (PIPELINE_RULES_VERSION, Pipeline, gate, next_step, stage_of, tier, DONE, WAITING, FULFILLED)
+from pipeline import (PIPELINE_RULES_VERSION, Pipeline, acquisition_state, gate, next_step, stage_of, tier, DONE, WAITING, FULFILLED)
 from rejection_policy import REJECTION_RULES_VERSION
 
 NOW = datetime(2026, 10, 19, 12, 0, tzinfo=timezone.utc)
@@ -174,9 +174,9 @@ class NextStepTests(unittest.TestCase):
         return next_step(items, account or {}, dict(oa_first=False, **(prefs or {})), NOW)   # OA step has its own tests
 
     def test_priority_ordering(self):
-        # downloading > awaiting_decision > fulfilled > sync > publish > idle; an attention item only blocks itself and publishing (H5)
+        # A ready file can download while a different answer awaits a decision.
         layers = [waiting("bad", status="attention"), fulfilled("dl", status="downloading"), deciding(), fulfilled(), waiting(), queued()]
-        expected = ["wait", "wait", "wait_user", "download", "sync", "prepare", "idle"]
+        expected = ["wait", "wait", "download", "download", "sync", "prepare", "idle"]
         reasons = []
         for count in range(len(layers) + 1):
             reasons.append(self.plan(layers[count:])["action"])
@@ -266,6 +266,30 @@ class SchedulerTests(unittest.TestCase):
 
     def make(self):
         return Pipeline(self.store, self.accounts, self.agent, start=False)
+
+    def test_mcp_scope_and_site_gate(self):
+        pipeline = self.make()
+        pipeline.publish_limiter = MagicMock()
+        pipeline.publish_limiter.wait_seconds.return_value = 0
+        self.store.update_preferences(oa_first=False, mcp_website_actions=True, mcp_actions_account="default")
+        self.store.update_account("default", points=600)
+        first = self.store.add("First", "10.1234/a", account_id="default")
+        second = self.store.add("Second", "10.1234/b", account_id="default")
+        self.store.update(first, request_confirmed=True, request_mcp_auto_publish=True, request_reward=10)
+        self.store.update(second, request_confirmed=True, request_reward=10)
+        self.assertEqual("publish", pipeline.tick_mcp_authorized(NOW)["action"])
+        self.assertEqual([("publish", first)], self.agent.calls)
+        self.agent.calls.clear()
+        self.store.update_account("default", points=288)
+        self.store.add("Answer", "10.1234/c", account_id="default", source="website", owned=True,
+                       assist_url=URL, website_status="待确认")
+        self.assertIsNone(pipeline.tick_mcp_authorized(NOW))
+        self.assertEqual([], self.agent.calls)
+
+    def test_oa_unavailable_is_not_final_failure(self):
+        self.assertEqual("oa_unavailable", acquisition_state(queued(oa_check={"status": "not_oa"}, request_confirmed=False))["code"])
+        self.assertEqual("blocked", acquisition_state(queued(oa_check={"status": "needs_human"}), {"blocked": True, "item_id": "prior"})["code"])
+        self.assertEqual("closed_unverified", acquisition_state(item(website_status="已关闭"))["code"])
 
     def test_enabled_resets_on_restart(self):
         pipeline = self.make()
