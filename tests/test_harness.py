@@ -24,7 +24,7 @@ from kytdl_client import Client
 
 ROOT = Path(__file__).resolve().parents[1]
 EXPECTED_TOOLS = {
-    "workbench_status", "list_accounts", "switch_account", "list_papers", "preview_references", "import_references", "query_public_metadata",
+    "workbench_status", "list_accounts", "switch_account", "list_papers", "preview_references", "import_references", "query_public_metadata", "search_literature",
     "verify_paper", "website_action", "reject_paper", "stop_website_task", "unparsed_segments", "batch_status", "review_table", "confirm_batch",
     "download_paper", "download_progress", "wait_for", "get_result", "render_pages", "submit_assist_result", "error_report", "monitor_status",
     "events", "download_settings_get", "oa_lookup", "oa_fetch", "open_panel"}
@@ -81,6 +81,38 @@ async def call(session, name, args=None):
 
 
 class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_openalex_key_setting_is_private_and_used_for_search(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder)
+            try:
+                client = Client("http://127.0.0.1:%d" % server.server_port)
+                with patch("credential_vault.protect", side_effect=lambda data, decrypt=False: data[::-1]), patch("literature_search.search_works", return_value={"records": []}) as search:
+                    client.post("/api/openalex-key", {"key": "test-secret"})
+                    state = client.state()
+                    self.assertTrue(state["openalex_key_saved"])
+                    self.assertNotIn("test-secret", json.dumps(state))
+                    client.post("/api/literature-search", {"query": "fiber"})
+                    self.assertEqual("test-secret", search.call_args.args[-1])
+                    client.post("/api/openalex-key-clear", {})
+                    self.assertFalse(client.state()["openalex_key_saved"])
+            finally:
+                stop(server)
+
+    async def test_search_literature_through_mcp_without_import(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder)
+            result = {"records": [{"title": "Test", "doi": "10.1234/test", "authors": []}], "next_cursor": None, "total": 1}
+            try:
+                with patch("literature_search.search_works", return_value=result) as search:
+                    async with connect(server) as session:
+                        error, payload = await call(session, "search_literature", {"query": "fiber", "page_size": 5})
+                    self.assertFalse(error)
+                    self.assertEqual("10.1234/test", payload["records"][0]["doi"])
+                    self.assertEqual(5, search.call_args.args[-3])
+                    self.assertEqual([], server.store.snapshot()["items"])
+            finally:
+                stop(server)
+
     async def test_tool_list_has_no_forbidden_tools(self):
         with tempfile.TemporaryDirectory() as folder:
             server = start(folder)

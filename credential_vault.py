@@ -83,3 +83,16 @@ class AIKeyVault:
     def forget(self):
         with self.lock:
             self.file.unlink(missing_ok=True)
+
+
+class OpenAlexKeyVault(AIKeyVault):
+    """Dedicated DPAPI file; never shares the AI service key."""
+    def __init__(self, root):
+        self.file = Path(root) / "openalex_key.dpapi"
+        self.lock = threading.Lock()
+
+    def load(self):
+        try:
+            return super().load()
+        except ValueError:
+            raise ValueError("无法读取已保存的 OpenAlex 密钥，请重新输入") from None

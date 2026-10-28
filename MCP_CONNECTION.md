@@ -64,6 +64,7 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 | switch_account | 切换已有账户，不弹出登录窗口 | 本地 |
 | list_papers | 当前账户队列摘要（分页、紧凑） | 只读 |
 | preview_references | 本地解析引用 | 只读 |
+| search_literature | 按关键词、年份及开放获取状态检索 OpenAlex，返回书目和分页游标；不自动导入或下载 | 公共网络 |
 | unparsed_segments | 返回本地规则没认出来的段落，交给 harness 的模型自己解析 | 只读 |
 | import_references | 导入文本，或导入 harness 自己解析好的结构化记录；新建批次并自动做免费源筛选，不发布 | 本地 |
 | batch_status | 批次进度（筛选 / 待确认 / 求助中 / 监控 / 完成）与该批次事件 | 只读 |
@@ -111,6 +112,8 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 
 只要免费全文：`oa_fetch(doi)`，然后 `wait_for(id, until="oa_finished")`，再 `get_result(id)`。
 
+文献搜索：`search_literature(query="gut microbiome polyphenols", year_from=2020, page_size=50, mode="keyword")`。`mode` 也可设 `exact`（精确词/布尔式）或 `semantic`（语义向量）；语义搜索单次最多 50 条，不支持游标，分数用于排序，不是概率。关键词与精确搜索每页最多 100 条，把返回的 `next_cursor` 连同相同的查询和筛选条件传入下一次调用；**第二页起需免费 API Key**。按 DOI 或 OpenAlex ID 去重；只把人工或 harness 筛选后的 `{title, doi, authors}` 记录交给 `import_references`，每次最多 200 条。检索词会发送给 OpenAlex，结果与撤稿标识需独立核实。匿名查询共享 IP 的额度，可能随政策变化；可在设置 → 下载 → OpenAlex 文献搜索中输入并用 Windows 当前用户加密保存；也可通过服务进程环境变量 `OPENALEX_API_KEY` 配置（已保存密钥优先），勿写入源码、记录或对话。免费密钥申请：https://openalex.org/settings/api 。
+
 ## harness 的模型代替内置 AI
 
 Claude Code、Codex 这类客户端自带模型，能读文字也能看图。经 MCP 使用时，凡是“识别、整理、解释”的工作都可以交给它，所以**不需要在 App 里填 AI Key，App 内 AI 开关保持关闭也不影响**：
@@ -131,6 +134,7 @@ Claude Code、Codex 这类客户端自带模型，能读文字也能看图。经
 ```
 kytdl status                       服务状态、授权、监控、最近批次
 kytdl import <文件|->              导入引用（txt/csv/ris/bib/docx；- 表示读标准输入），只做免费源筛选
+kytdl search "关键词" [--mode keyword|exact|semantic] [--year-from 2020] [--year-to 2026] [--open-access] [--page-size 50] [--cursor 游标] --json
 kytdl oa <DOI> [--download]        查找免费全文；加 --download 则下载并本地核对
 kytdl batch [<批次ID>]             批次列表，或某批次的确认表
 kytdl events [-n 20]               最近事件

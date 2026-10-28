@@ -78,6 +78,12 @@ def cmd_import(client, args):
                 next="kytdl wait %s --until awaiting_confirmation,done" % reply["batch_id"]), OK
 
 
+def cmd_search(client, args):
+    reply = client.post("/api/literature-search", dict(query=args.query, cursor=args.cursor, year_from=args.year_from,
+                         year_to=args.year_to, open_access=args.open_access, page_size=args.page_size, mode=args.mode))
+    return dict(ok=True, **reply), OK
+
+
 def cmd_oa(client, args):
     if args.download:
         reply = client.post("/api/mcp/oa-fetch", {"doi": args.doi})
@@ -141,6 +147,15 @@ def parser():
     s = sub.add_parser("import", parents=[common], help="import references (file or - for stdin); starts free-source screening only")
     s.add_argument("source")
     s.set_defaults(run=cmd_import)
+    s = sub.add_parser("search", parents=[common], help="search OpenAlex; no download or import")
+    s.add_argument("query")
+    s.add_argument("--cursor", default="*")
+    s.add_argument("--year-from", type=int)
+    s.add_argument("--year-to", type=int)
+    s.add_argument("--open-access", action="store_true")
+    s.add_argument("--page-size", type=int, default=50)
+    s.add_argument("--mode", choices=["keyword", "exact", "semantic"], default="keyword")
+    s.set_defaults(run=cmd_search)
     s = sub.add_parser("oa", parents=[common], help="look up (or with --download fetch) the open-access PDF of a DOI")
     s.add_argument("doi")
     s.add_argument("--download", action="store_true")
