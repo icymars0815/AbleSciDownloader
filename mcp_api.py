@@ -132,6 +132,13 @@ class McpApi:
         """Resume only an already explicitly confirmed request; no other queue item is authorised."""
         self.need_permission()
         item = self.item(body.get("id"))
+        # A pre-submit interruption can be retried safely; a recorded or uncertain submission cannot.
+        if (body.get("retry_unsubmitted") is True and stage_of(item) == "attention"
+                and item.get("request_confirmed") is True and item.get("source") == "import"
+                and not item.get("publish_action") and not item.get("publish_check")
+                and not item.get("assist_url") and not item.get("publish_blocked")):
+            self.store.update(item["id"], status="ready", note="已恢复尚未提交的后台求助")
+            item = self.store.get(item["id"])
         if item.get("request_confirmed") is not True or stage_of(item) != "queued" or item.get("publish_blocked"):
             raise ValueError("仅已确认、尚未发布且未暂停的求助可继续后台处理")
         self.store.update(item["id"], request_mcp_auto_publish=True)

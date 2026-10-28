@@ -291,6 +291,35 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual("blocked", acquisition_state(queued(oa_check={"status": "needs_human"}), {"blocked": True, "item_id": "prior"})["code"])
         self.assertEqual("closed_unverified", acquisition_state(item(website_status="已关闭"))["code"])
 
+    def test_authorized_answer_is_not_starved_by_unrelated_answer(self):
+        pipeline = self.make()
+        self.store.update_preferences(mcp_website_actions=True, mcp_actions_account="default")
+        self.store.update_account("default", points=600)
+        self.store.add("Earlier unrelated", "10.1234/x", account_id="default", source="website", owned=True,
+                       assist_url=URL, website_status=FULFILLED[0], created="2026-10-19T09:00:00")
+        target = self.store.add("Authorized", "10.1234/y", account_id="default", source="website", owned=True,
+                                assist_url=URL + "different", website_status=FULFILLED[0], request_confirmed=True,
+                                request_mcp_auto_publish=True, created="2026-10-19T10:00:00")
+        self.assertEqual("download", pipeline.tick_mcp_authorized(NOW)["action"])
+        self.assertEqual([("download", target)], self.agent.calls)
+
+    def test_unrelated_answer_does_not_block_high_balance_but_still_blocks_low_balance(self):
+        pipeline = self.make()
+        pipeline.publish_limiter = MagicMock()
+        pipeline.publish_limiter.wait_seconds.return_value = 0
+        self.store.update_preferences(oa_first=False, mcp_website_actions=True, mcp_actions_account="default")
+        self.store.add("Unrelated", "10.1234/x", account_id="default", source="website", owned=True,
+                       assist_url=URL, website_status=FULFILLED[0])
+        target = self.store.add("Authorized", "10.1234/y", account_id="default", request_confirmed=True,
+                                request_mcp_auto_publish=True, request_reward=10)
+        self.store.update_account("default", points=600)
+        self.assertEqual("publish", pipeline.tick_mcp_authorized(NOW)["action"])
+        self.assertEqual([("publish", target)], self.agent.calls)
+        self.agent.calls.clear()
+        self.store.update_account("default", points=100)
+        self.assertIsNone(pipeline.tick_mcp_authorized(NOW))
+        self.assertEqual([], self.agent.calls)
+
     def test_enabled_resets_on_restart(self):
         pipeline = self.make()
         self.store.update_preferences(pipeline_enabled=True)

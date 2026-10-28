@@ -394,6 +394,19 @@ class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WarningTests(unittest.TestCase):
+    def test_resume_pre_submit_only(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder, permission=True)
+            try:
+                iid = server.store.add("Test", "10.1234/test", account_id="default")
+                server.store.update(iid, request_confirmed=True, status="attention")
+                result = server.mcp_api.do_auto_continue({"id": iid, "retry_unsubmitted": True})
+                self.assertTrue(result["queued"])
+                server.store.update(iid, status="attention", publish_action={"status": "uncertain"})
+                with self.assertRaises(ValueError):
+                    server.mcp_api.do_auto_continue({"id": iid, "retry_unsubmitted": True})
+            finally:
+                stop(server)
     def test_importing_mcp_server_emits_no_pydantic_warning(self):
         done = subprocess.run([sys.executable, "-W", "error", "-c", "import mcp_server"], cwd=ROOT, capture_output=True, text=True, timeout=60)
         self.assertEqual(0, done.returncode, done.stderr[-500:])

@@ -299,9 +299,9 @@ def confirm_batch(batch_id: str, item_ids: list[str] | None = None, rewards: dic
 
 
 @tool(SITE, SPEND)
-def continue_authorized_request(paper_id: str) -> dict:
-    """Resume background handling for exactly one previously confirmed request. Does not authorize a new item or bypass an account gate. Site errors or ambiguous outcomes require human review."""
-    return api("/api/mcp/auto-continue", {"id": paper_id})
+def continue_authorized_request(paper_id: str, retry_unsubmitted: bool = False) -> dict:
+    """Resume one previously confirmed request. retry_unsubmitted recovers a proven pre-submit interruption only; uncertain submissions are never retried. Does not authorize a new item or bypass an account gate."""
+    return api("/api/mcp/auto-continue", {"id": paper_id, "retry_unsubmitted": retry_unsubmitted})
 
 
 # ---------- download ----------

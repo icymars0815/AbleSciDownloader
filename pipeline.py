@@ -329,6 +329,8 @@ class Pipeline:
         items, account, prefs, session = self._view()
         if not prefs.get("mcp_website_actions") or prefs.get("mcp_actions_account", "default") != self.accounts.active_id:
             return None
+        if any(stage_of(i) == "downloading" for i in items):
+            return None
         targets = [i for i in items if i.get("request_mcp_auto_publish") is True and i.get("request_confirmed") is True
                    and stage_of(i) in ("queued", "submitted", "fulfilled", "awaiting_decision")]
         if not targets:
@@ -336,9 +338,21 @@ class Pipeline:
         settings = dict(prefs, pipeline_auto_publish=True, pipeline_rules_version=PIPELINE_RULES_VERSION,
                         pipeline_auto_adopt=True, rejection_mode="manual")
         for target in sorted(targets, key=lambda i: i.get("created", "")):
-            # Other site items remain visible to the points gate but cannot be acted on by this scheduler.
+            # An unrelated answer must not mask an authorized answer that is ready to process.
+            state = stage_of(target)
+            current_time = when or datetime.now().astimezone()
+            if state == "fulfilled" and session and not retry_waiting(target, current_time):
+                planned = step("download", target, "下载应助文件", False, _title(target) + "已有应助文件")
+                return planned if self.execute(planned) else None
+            if state == "awaiting_decision" and _auto_adopt_ok(target, settings):
+                planned = step("adopt", target, "自动采纳完全匹配的应助", False, "已通过身份和书目核验")
+                return planned if self.execute(planned) else None
+            # Preserve all answers for the actual points gate. If the gate is open, however,
+            # unrelated answers should not preempt an otherwise authorized queued request.
             relevant = [i for i in items if stage_of(i) != "queued" or i["id"] == target["id"]]
-            planned = next_step(relevant, account, settings, when or datetime.now().astimezone(), session=session, local=False)
+            if state == "queued" and not gate(items, account.get("points"), item_reward(target, settings, account.get("points")))["blocked"]:
+                relevant = [i for i in relevant if i["id"] == target["id"] or stage_of(i) not in ("fulfilled", "awaiting_decision")]
+            planned = next_step(relevant, account, settings, current_time, session=session, local=False)
             action = planned.get("action")
             if action in ("publish", "download", "adopt") and planned.get("item_id") == target["id"]:
                 return planned if self.execute(planned) else None
