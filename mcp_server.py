@@ -299,9 +299,9 @@ def confirm_batch(batch_id: str, item_ids: list[str] | None = None, rewards: dic
 
 
 @tool(SITE, SPEND)
-def continue_authorized_request(paper_id: str, min_balance: int | None = None, retry_unsubmitted: bool = False) -> dict:
-    """Resume a confirmed request. Optionally set the user's explicitly authorized balance threshold for this item; below it paid actions stop. Does not authorize a new item or bypass an account gate."""
-    return api("/api/mcp/auto-continue", {"id": paper_id, "min_balance": min_balance, "retry_unsubmitted": retry_unsubmitted})
+def continue_authorized_request(paper_id: str) -> dict:
+    """Resume background handling for exactly one previously confirmed request. Does not authorize a new item or bypass an account gate. Site errors or ambiguous outcomes require human review."""
+    return api("/api/mcp/auto-continue", {"id": paper_id})
 
 
 # ---------- download ----------

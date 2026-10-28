@@ -124,40 +124,20 @@ class McpApi:
         if isinstance(body.get("rewards"), dict) and any(dict(bound).get(k) != v for k, v in body["rewards"].items()):
             raise ValueError("悬赏与预览不一致；请重新预览")
         count = intake.confirm(self.store, body["batch_id"], ids, dict(bound), self.points(), self.session(), self.accounts.active_id)
-        floors = self.store.snapshot().get("preferences", {}).get("mcp_min_balance_by_account") or {}
-        floor = floors.get(self.accounts.active_id) if isinstance(floors, dict) else None
         for iid in ids:
-            changes = dict(request_mcp_auto_publish=True)
-            if isinstance(floor, int) and not isinstance(floor, bool) and 0 <= floor <= 5000:
-                changes["request_mcp_min_balance"] = floor
-            self.store.update(iid, **changes)
+            self.store.update(iid, request_mcp_auto_publish=True)
         return dict(ok=True, confirmed=count, estimated_points=sum(r for _, r in bound))
 
     def do_auto_continue(self, body):
         """Resume only an already explicitly confirmed request; no other queue item is authorised."""
         self.need_permission()
         item = self.item(body.get("id"))
-        if (body.get("retry_unsubmitted") is True and stage_of(item) == "attention"
-                and item.get("request_confirmed") is True and not item.get("publish_action")
-                and not item.get("publish_check") and not item.get("assist_url") and not item.get("publish_blocked")):
-            self.store.update(item["id"], status="ready", note="已恢复尚未提交的后台求助")
-            item = self.store.get(item["id"])
-        if item.get("request_confirmed") is not True or stage_of(item) not in ("queued", "submitted", "fulfilled", "awaiting_decision") or item.get("publish_blocked"):
-            raise ValueError("仅已确认且未暂停的有效求助可继续后台处理")
-        floor = body.get("min_balance")
-        if floor is not None and (isinstance(floor, bool) or not isinstance(floor, int) or not 0 <= floor <= 5000):
-            raise ValueError("最低余额须为 0–5000 的整数")
-        changes = dict(request_mcp_auto_publish=True)
-        if floor is not None:
-            changes["request_mcp_min_balance"] = floor
-            floors = self.store.snapshot().get("preferences", {}).get("mcp_min_balance_by_account") or {}
-            floors = dict(floors) if isinstance(floors, dict) else {}
-            floors[self.accounts.active_id] = floor
-            self.store.update_preferences(mcp_min_balance_by_account=floors)
-        self.store.update(item["id"], **changes)
+        if item.get("request_confirmed") is not True or stage_of(item) != "queued" or item.get("publish_blocked"):
+            raise ValueError("仅已确认、尚未发布且未暂停的求助可继续后台处理")
+        self.store.update(item["id"], request_mcp_auto_publish=True)
         items = [i for i in self.store.snapshot().get("items", []) if i.get("account_id", "default") == self.accounts.active_id]
         blocked = gate(items, self.points(), item.get("request_reward"))
-        return dict(ok=True, id=item["id"], stage=stage_of(item), gate=blocked)
+        return dict(ok=True, id=item["id"], queued=True, gate=blocked)
 
     # ---- results ----
     def do_result(self, body):

@@ -341,10 +341,6 @@ class Pipeline:
             planned = next_step(relevant, account, settings, when or datetime.now().astimezone(), session=session, local=False)
             action = planned.get("action")
             if action in ("publish", "download", "adopt") and planned.get("item_id") == target["id"]:
-                floor = target.get("request_mcp_min_balance")
-                points = account.get("points")
-                if action in ("publish", "download") and isinstance(floor, int) and (not isinstance(points, int) or points < floor):
-                    continue
                 return planned if self.execute(planned) else None
             if action == "sync" and stage_of(target) == "submitted":
                 return planned if self.execute(planned) else None

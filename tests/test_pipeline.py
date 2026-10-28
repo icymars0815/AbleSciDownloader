@@ -291,15 +291,6 @@ class SchedulerTests(unittest.TestCase):
         self.assertEqual("blocked", acquisition_state(queued(oa_check={"status": "needs_human"}), {"blocked": True, "item_id": "prior"})["code"])
         self.assertEqual("closed_unverified", acquisition_state(item(website_status="已关闭"))["code"])
 
-    def test_mcp_balance_threshold_stops_further_spending(self):
-        pipeline = self.make()
-        self.store.update_preferences(oa_first=False, mcp_website_actions=True, mcp_actions_account="default")
-        self.store.update_account("default", points=49)
-        first = self.store.add("First", "10.1234/a", account_id="default")
-        self.store.update(first, request_confirmed=True, request_mcp_auto_publish=True, request_reward=10, request_mcp_min_balance=50)
-        self.assertIsNone(pipeline.tick_mcp_authorized(NOW))
-        self.assertEqual([], self.agent.calls)
-
     def test_enabled_resets_on_restart(self):
         pipeline = self.make()
         self.store.update_preferences(pipeline_enabled=True)

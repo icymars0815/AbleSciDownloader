@@ -539,10 +539,6 @@ class BrowserAgent:
             self.store.update_account(account_id=self.accounts.active_id, points=fresh)
         points = fresh if fresh is not None else self.store.snapshot().get("account_metrics", {}).get(self.accounts.active_id, {}).get("points")
         mode, _source, changes, message = resolve_highspeed(preferences, points)
-        floor = item.get("request_mcp_min_balance")
-        if isinstance(floor, int) and (fresh is None or fresh < floor):
-            mode = "off"
-            self.store.event("账户余额低于授权门槛或无法核实，已停用本次付费高速。", item_id=item_id, kind="download")
         if changes:
             self.store.update_preferences(**changes)
         if message:
@@ -1375,9 +1371,6 @@ class BrowserAgent:
         else:
             points = self.store.snapshot().get("account_metrics", {}).get(self.accounts.active_id, {}).get("points")
         recheck()
-        floor = item.get("request_mcp_min_balance")
-        if isinstance(floor, int) and (not isinstance(points, int) or points < floor):
-            raise PreconditionError("账户余额低于授权门槛或无法核实，未发布求助")
         if tier(stored_before, item_reward(item, prefs, stored_before)) == "batch" and tier(points, item_reward(item, prefs, points)) == "single":
             raise PreconditionError("科研通页面显示当前积分 %s，发布本条（悬赏 %d）后将低于 500，与之前记录的积分不符；未提交。已更新积分，请按逐条求助规则重新规划"
                                     % (points, item_reward(item, prefs, points)))
