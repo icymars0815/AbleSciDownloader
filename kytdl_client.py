@@ -103,9 +103,10 @@ def item_states(item, state):
     if item.get("pdf"):
         names.add("downloaded")
     check = item.get("oa_check") or {}
-    if check.get("status") == "needs_human":
+    running = (state.get("pipeline") or {}).get("oa_running") == item.get("id")
+    if check.get("status") == "needs_human" and not running:
         names.add("needs_human")
-    if check and (state.get("pipeline") or {}).get("oa_running") != item.get("id"):
+    if check and not running:
         names.add("oa_finished")
     return names
 

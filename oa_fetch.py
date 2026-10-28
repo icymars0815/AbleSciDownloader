@@ -325,6 +325,11 @@ def _cache_file(root, doi):
 def _cache_read(root, doi):
     try:
         saved = json.loads(_cache_file(root, doi).read_text("utf-8"))
+        result = saved["result"]
+        # Cached PMC locations from the retired OA API cannot include the
+        # current cloud service. Refresh lazily without deleting user data.
+        if result.get("pmcid") and not any(a.get("source") == "PMC Cloud" for a in result.get("attempts", [])):
+            return None
         ttl = CACHE_HIT_TTL if saved["result"].get("candidates") else CACHE_MISS_TTL
         if saved.get("doi") == doi and 0 <= _wall() - saved["cached_at"] < ttl:
             return dict(saved["result"], cached=True, fetched_at=saved.get("fetched_at"))
@@ -535,11 +540,13 @@ def _find(doi, email, deadline, core_key):
             path = pdf[len(prefix):].split("?", 1)[0]
             if not re.fullmatch(r"[A-Za-z0-9._-]+\.pdf", path, re.I):
                 continue
-            manuscript = meta.get("is_manuscript") is True
+            if not isinstance(meta.get("is_manuscript"), bool):
+                continue
+            manuscript = meta["is_manuscript"]
             cloud.append((manuscript, bucket + name + "/" + path))
         for manuscript, url in sorted(cloud):
             info["is_oa"] = True
-            add(url, "PMC Cloud", 1, version="acceptedVersion" if manuscript else "publishedVersion")
+            add(url, "PMC Cloud", 1, version=None if manuscript else "publishedVersion")
     # 5. Semantic Scholar (no key; a 429 is just recorded)
     s2 = lookup("Semantic Scholar", "https://api.semanticscholar.org/graph/v1/paper/DOI:" + encoded + "?fields=openAccessPdf,externalIds")
     if isinstance(s2, dict):
