@@ -83,13 +83,24 @@ class FindTests(unittest.TestCase):
         self.assertTrue(result["is_oa"])
         self.assertLess(urls.index("https://europepmc.org/articles/PMC123456?pdf=render"), urls.index("https://s2.example/p.pdf"))
 
-    def test_pmc_oa_service_ftp_becomes_https(self):
-        xml = (200, b'<OA><records><record id="PMC1"><link format="tgz" href="ftp://ftp.ncbi.nlm.nih.gov/a.tgz"/>'
-                    b'<link format="pdf" href="ftp://ftp.ncbi.nlm.nih.gov/pub/pmc/a.pdf"/></record></records></OA>')
-        result, _ = self.find({"api.openalex.org": j(OPENALEX), "oa.fcgi": xml})
+    def test_pmc_cloud_uses_matching_metadata_and_published_version(self):
+        xml = (200, b'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><CommonPrefixes><Prefix>PMC7019488.1/</Prefix></CommonPrefixes><CommonPrefixes><Prefix>PMC7019488.2/</Prefix></CommonPrefixes></ListBucketResult>')
+        base = "s3://pmc-oa-opendata/PMC7019488."
+        published = j({"pmcid": "PMC7019488", "doi": DOI, "is_manuscript": False, "pdf_url": base + "2/paper.pdf?md5=abc"})
+        manuscript = j({"pmcid": "PMC7019488", "doi": DOI, "is_manuscript": True, "pdf_url": base + "1/paper.pdf"})
+        result, _ = self.find({"api.openalex.org": j(OPENALEX), "metadata/PMC7019488.1.json": manuscript,
+                               "metadata/PMC7019488.2.json": published, "pmc-oa-opendata.s3.amazonaws.com/?": xml})
         urls = [c["url"] for c in result["candidates"]]
-        self.assertIn("https://ftp.ncbi.nlm.nih.gov/pub/pmc/a.pdf", urls)
-        self.assertFalse(any(u.endswith(".tgz") for u in urls))
+        self.assertLess(urls.index("https://pmc-oa-opendata.s3.amazonaws.com/PMC7019488.2/paper.pdf"),
+                        urls.index("https://pmc-oa-opendata.s3.amazonaws.com/PMC7019488.1/paper.pdf"))
+
+    def test_pmc_cloud_rejects_wrong_doi_and_external_pdf(self):
+        xml = (200, b'<ListBucketResult xmlns="http://s3.amazonaws.com/doc/2006-03-01/"><CommonPrefixes><Prefix>PMC7019488.1/</Prefix></CommonPrefixes></ListBucketResult>')
+        for metadata in ({"pmcid": "PMC7019488", "doi": "10.1234/wrong", "pdf_url": "s3://pmc-oa-opendata/PMC7019488.1/a.pdf"},
+                         {"pmcid": "PMC7019488", "doi": DOI, "pdf_url": "https://untrusted.example/a.pdf"}):
+            result, _ = self.find({"api.openalex.org": j(OPENALEX), "metadata/PMC7019488.1.json": j(metadata),
+                                   "pmc-oa-opendata.s3.amazonaws.com/?": xml})
+            self.assertFalse(any(c["source"] == "PMC Cloud" for c in result["candidates"]))
 
     def test_preprints(self):
         with patch("oa_fetch._request", Router({})):
