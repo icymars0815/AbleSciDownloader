@@ -74,12 +74,34 @@ def main():
             assert page.get_by_role('heading', name='科研通下载器', exact=True).count() == 1
             assert not errors, errors
             page.screenshot(path=str(evidence / 'portable-ui.png'), full_page=False)
+            # Exercise the new settings with a fictional key, entirely on loopback.
+            page.get_by_role('button', name='我已了解', exact=True).click()
+            page.locator('#settingsBtn').click()
+            page.locator('#tab-pipeline').click()
+            key = page.locator('#openalexKey')
+            key.wait_for(state='visible')
+            assert key.get_attribute('type') == 'password'
+            key.fill('fictional-openalex-smoke-key')
+            with page.expect_response(lambda r: r.url == base + '/api/openalex-key') as saved:
+                page.locator('[data-action="openalex-key-save"]').click()
+            assert saved.value.status == 200
+            page.wait_for_function("document.querySelector('#openalexKey').value === '' && !document.querySelector('[data-action=\"openalex-key-clear\"]').disabled")
+            public_state = c.get('/api/state')
+            assert public_state['openalex_key_saved']
+            assert 'fictional-openalex-smoke-key' not in json.dumps(public_state)
+            page.locator('#openalexKey').scroll_into_view_if_needed()
+            page.screenshot(path=str(evidence / 'portable-openalex-settings.png'), full_page=False)
+            with page.expect_response(lambda r: r.url == base + '/api/openalex-key-clear') as cleared:
+                page.locator('[data-action="openalex-key-clear"]').click()
+            assert cleared.value.status == 200
+            assert not c.get('/api/state')['openalex_key_saved']
+            assert not errors, errors
             browser.close()
         tools = asyncio.run(mcp_check(base))
         result = {'result':'PASS', 'python':sys.version, 'python_executable':str(sys.executable),
                   'browser':str(browser_exe.relative_to(ROOT)), 'browser_version':browser_version,
                   'checks':['native imports','DPAPI roundtrip','isolated API','fictional PDF verification',
-                            'offline UI','JavaScript errors absent','bundled Chromium','stdio MCP handshake'],
+                            'offline UI','OpenAlex key settings save/clear and privacy','JavaScript errors absent','bundled Chromium','stdio MCP handshake'],
                   'mcp_tools':tools, 'real_site_actions':False, 'fresh_windows_vm_tested':False}
         (evidence / 'SMOKE_RESULT.json').write_text(json.dumps(result,indent=2),encoding='utf-8')
         print(json.dumps({'result':'PASS','mcp_tools':tools,'browser_version':browser_version}),flush=True)
