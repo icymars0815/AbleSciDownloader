@@ -132,7 +132,8 @@ class BrowserAgent:
         prefs = self.store.snapshot().get("preferences", {})
         active = self.accounts.active_id
         if (self.stop.is_set() or active != scope["account_id"] or not prefs.get("mcp_website_actions")
-                or prefs.get("mcp_actions_account", "default") != active):
+                or prefs.get("mcp_actions_account", "default") != active
+                or scope.get("generation") != prefs.get("mcp_action_generation", 0)):
             raise PreconditionError("MCP 后台操作已停止或授权已撤销，未继续操作")
         if scope.get("auto") and scope.get("item_id"):
             item = self.store.get(scope["item_id"]) or {}
@@ -533,6 +534,8 @@ class BrowserAgent:
         self.assert_account(item)
         if item.get("verification") or item.get("pdf"):
             raise PreconditionError("该条目已有本地 PDF，不会重复下载（避免重复扣分）。请先在本地复核")
+        self.assert_mcp_authority()
+        self.store.update(item_id, download_mcp_scope=getattr(self, "_mcp_scope", None))
         self.goto(item["assist_url"])
         table = self.page.locator("table").first
         table.wait_for()
@@ -1050,6 +1053,7 @@ class BrowserAgent:
             raise ValueError("无法唯一确认该文件的驳回入口，未提交。请打开求助详情手动处理")
         if self.stop.is_set():
             raise ValueError("已停止，未驳回")
+        self.assert_mcp_authority()
         # From here on, a timeout means unknown outcome; never click again automatically.
         self.clear_blocking_layers()
         self.click_or_handover(item_id, controls, "驳回")
@@ -1069,6 +1073,7 @@ class BrowserAgent:
                 raise ValueError("未确认驳回提交按钮，或已停止，请手动查看")
             if automatic and rejection_decision(self.store.get(item_id), self.store.snapshot().get("preferences", {}))["mode"] != "auto":
                 raise ValueError("自动驳回已关闭，未提交")
+            self.assert_mcp_authority()
             submit.click()
         # Confirmation must belong to this exact file entry, never the live site feed.
         try:

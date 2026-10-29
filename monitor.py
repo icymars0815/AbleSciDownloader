@@ -255,8 +255,22 @@ class Monitor:
         if self.login_required or self.inflight or self.agent_busy():
             return False
         for item in retry_due_items(self.items(), datetime.fromtimestamp(now).astimezone()):
+            scope = item.get("download_mcp_scope")
+            credentials = None
+            if scope:
+                prefs = self.prefs()
+                active = self.accounts.active_id
+                if (not prefs.get("mcp_website_actions") or prefs.get("mcp_actions_account", "default") != active
+                        or scope.get("account_id") != active
+                        or scope.get("generation") != prefs.get("mcp_action_generation", 0)
+                        or (scope.get("auto") and not item.get("request_mcp_auto_publish"))):
+                    continue
+                credentials = {"mcp_scope": scope}
             try:
-                self.agent.enqueue("download", item["id"])
+                if credentials:
+                    self.agent.enqueue("download", item["id"], credentials)
+                else:
+                    self.agent.enqueue("download", item["id"])
                 return True
             except ValueError:
                 return False

@@ -680,7 +680,8 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                                      **({"status": "ready"} if (store.get(body["id"]) or {}).get("status") == "retrying" else {}))
                     if body.get("mcp_call") is True:
                         credentials = {"mcp_scope": {"account_id": accounts.active_id,
-                                                      "item_id": body.get("id"), "auto": False}}
+                                                      "item_id": body.get("id"), "auto": False,
+                                                      "generation": store.snapshot().get("preferences", {}).get("mcp_action_generation", 0)}}
                     agent.enqueue(action, body.get("id"), credentials)
                     if action == "publish":
                         pipeline.publish_limiter.record()   # manual publishes count towards the hourly cap

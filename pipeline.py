@@ -320,6 +320,8 @@ class Pipeline:
         active = self.accounts.active_id
         paused = []
         def pause(data):
+            prefs = data.setdefault("preferences", {})
+            prefs["mcp_action_generation"] = prefs.get("mcp_action_generation", 0) + 1
             for item in data.get("items", []):
                 if all_accounts or item.get("account_id", "default") == active:
                     if item.get("request_mcp_auto_publish"):
@@ -577,7 +579,8 @@ class Pipeline:
         if planned.get("mcp_authorized"):
             self.agent.enqueue(planned["action"], planned["item_id"],
                                {"mcp_scope": {"account_id": self.accounts.active_id,
-                                              "item_id": planned["item_id"], "auto": True}})
+                                              "item_id": planned["item_id"], "auto": True,
+                                              "generation": self.store.snapshot().get("preferences", {}).get("mcp_action_generation", 0)}})
         else:
             self.agent.enqueue(planned["action"], planned["item_id"])
         if planned["action"] == "publish":

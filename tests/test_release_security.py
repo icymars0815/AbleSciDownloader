@@ -35,7 +35,8 @@ class ContinuationBoundaryTests(unittest.TestCase):
     def scoped_agent(self):
         agent = object.__new__(BrowserAgent)
         agent.store, agent.accounts, agent.stop = self.store, self.accounts, threading.Event()
-        agent._mcp_scope = {"account_id": "default", "item_id": self.iid, "auto": True}
+        agent._mcp_scope = {"account_id": "default", "item_id": self.iid, "auto": True,
+                            "generation": self.store.snapshot()["preferences"]["mcp_action_generation"]}
         return agent
 
     def test_pausing_keeps_confirmation_and_prevents_next_tick(self):
@@ -86,7 +87,34 @@ class ContinuationBoundaryTests(unittest.TestCase):
     def test_scheduled_command_carries_bound_authority(self):
         self.assertEqual("publish", self.pipeline.tick_mcp_authorized()["action"])
         self.agent.enqueue.assert_called_once_with("publish", self.iid,
-            {"mcp_scope": {"account_id": "default", "item_id": self.iid, "auto": True}})
+            {"mcp_scope": {"account_id": "default", "item_id": self.iid, "auto": True,
+                           "generation": self.store.snapshot()["preferences"]["mcp_action_generation"]}})
+
+    def test_direct_mcp_command_invalid_after_stop_and_reenable(self):
+        agent = self.scoped_agent()
+        agent._mcp_scope["auto"] = False
+        self.pipeline.pause_mcp()
+        self.store.update_preferences(mcp_website_actions=True)
+        with self.assertRaises(PreconditionError): agent.assert_mcp_authority()
+
+    def test_monitor_retry_retains_authority_and_cannot_bypass_pause(self):
+        from datetime import datetime
+        from monitor import Monitor
+        monitor = object.__new__(Monitor)
+        monitor.store, monitor.accounts, monitor.agent = self.store, self.accounts, self.agent
+        monitor.login_required, monitor.inflight = False, False
+        self.store.update(self.iid, status="retrying", source="website", owned=True, website_status="待确认",
+                          assist_url="https://www.ablesci.com/assist/detail?id=F1",
+                          download_mcp_scope=self.scoped_agent()._mcp_scope,
+                          download_retry={"next_at": "2026-10-20T00:00:00+00:00"})
+        now = datetime.now().timestamp()
+        self.assertTrue(monitor.retry_downloads(now))
+        scope = self.store.get(self.iid)["download_mcp_scope"]
+        self.agent.enqueue.assert_called_once_with("download", self.iid, {"mcp_scope": scope})
+        self.agent.enqueue.reset_mock()
+        self.pipeline.pause_mcp()
+        self.assertFalse(monitor.retry_downloads(now))
+        self.agent.enqueue.assert_not_called()
 
     def test_download_handoff_retains_authority(self):
         agent = self.scoped_agent()
@@ -156,4 +184,3 @@ class PackagingBoundaryTests(unittest.TestCase):
                 patch.object(module.subprocess, "check_output", return_value=payload.getvalue()):
             module.copy_sources("public-commit", Path(folder))
             self.assertEqual(b"committed public source", (Path(folder) / "app.py").read_bytes())
-
