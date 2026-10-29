@@ -303,6 +303,9 @@ class Pipeline:
         self.stopped = threading.Event()
         was_on = bool(store.snapshot().get("preferences", {}).get("pipeline_enabled"))
         store.update_preferences(pipeline_enabled=False)
+        # Restart must not silently resume site writes while the UI says automation is off.
+        if self.pause_mcp(all_accounts=True):
+            store.event("重启后已暂停 MCP 后台续办，确认记录保留。请主动恢复已确认的文献。", kind="needs_action")
         if was_on:   # the switch is reset on every start; tell the person once that it was on before the restart
             store.update_preferences(pipeline_restart_notice=True)
         self.thread = threading.Thread(target=self.run, daemon=True)
@@ -311,6 +314,22 @@ class Pipeline:
 
     def enabled(self):
         return bool(self.store.snapshot().get("preferences", {}).get("pipeline_enabled"))
+
+    def pause_mcp(self, all_accounts=False):
+        """Retain confirmations/rewards, but require an explicit resume of background work."""
+        active = self.accounts.active_id
+        paused = []
+        def pause(data):
+            for item in data.get("items", []):
+                if all_accounts or item.get("account_id", "default") == active:
+                    if item.get("request_mcp_auto_publish"):
+                        item["request_mcp_auto_publish"] = False
+                        paused.append(item["id"])
+        self.store.mutate(pause)
+        return paused
+
+    def execute_mcp(self, planned):
+        return self.execute(dict(planned, mcp_authorized=True))
 
     def run(self):
         while not self.stopped.wait(self.interval):
@@ -343,10 +362,10 @@ class Pipeline:
             current_time = when or datetime.now().astimezone()
             if state == "fulfilled" and session and not retry_waiting(target, current_time):
                 planned = step("download", target, "下载应助文件", False, _title(target) + "已有应助文件")
-                return planned if self.execute(planned) else None
+                return planned if self.execute_mcp(planned) else None
             if state == "awaiting_decision" and _auto_adopt_ok(target, settings):
                 planned = step("adopt", target, "自动采纳完全匹配的应助", False, "已通过身份和书目核验")
-                return planned if self.execute(planned) else None
+                return planned if self.execute_mcp(planned) else None
             # Preserve all answers for the actual points gate. If the gate is open, however,
             # unrelated answers should not preempt an otherwise authorized queued request.
             relevant = [i for i in items if stage_of(i) != "queued" or i["id"] == target["id"]]
@@ -355,9 +374,9 @@ class Pipeline:
             planned = next_step(relevant, account, settings, current_time, session=session, local=False)
             action = planned.get("action")
             if action in ("publish", "download", "adopt") and planned.get("item_id") == target["id"]:
-                return planned if self.execute(planned) else None
+                return planned if self.execute_mcp(planned) else None
             if action == "sync" and stage_of(target) == "submitted":
-                return planned if self.execute(planned) else None
+                return planned if self.execute_mcp(planned) else None
         return None
 
     def close(self):
@@ -555,7 +574,12 @@ class Pipeline:
             return True
         if planned["action"] == "publish" and self.publish_limiter.wait_seconds() > 0:
             return False   # publish spacing (>= 60 s) or the hourly cap: the pipeline just waits
-        self.agent.enqueue(planned["action"], planned["item_id"])
+        if planned.get("mcp_authorized"):
+            self.agent.enqueue(planned["action"], planned["item_id"],
+                               {"mcp_scope": {"account_id": self.accounts.active_id,
+                                              "item_id": planned["item_id"], "auto": True}})
+        else:
+            self.agent.enqueue(planned["action"], planned["item_id"])
         if planned["action"] == "publish":
             self.publish_limiter.record()
         return True

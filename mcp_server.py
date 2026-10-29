@@ -237,7 +237,7 @@ def reject_paper(paper_id: str, category: Literal["file_mismatch", "cannot_open"
 
 @mcp.tool(annotations=LOCAL)
 def stop_website_task() -> dict:
-    """Request cancellation of the current browser task; keeps saved PDF and records."""
+    """Cancel the current browser task and pause automatic/MCP continuation. Keeps saved PDF and confirmations. Resume a confirmed queued request explicitly with continue_authorized_request."""
     return api("/api/stop", {})
 
 
@@ -300,7 +300,7 @@ def confirm_batch(batch_id: str, item_ids: list[str] | None = None, rewards: dic
 
 @tool(SITE, SPEND)
 def continue_authorized_request(paper_id: str, retry_unsubmitted: bool = False) -> dict:
-    """Resume one previously confirmed request. retry_unsubmitted recovers a proven pre-submit interruption only; uncertain submissions are never retried. Does not authorize a new item or bypass an account gate."""
+    """Resume one previously confirmed queued or published request after stopping/restarting. retry_unsubmitted recovers a proven pre-submit interruption only; uncertain submissions are never retried. Does not authorize a new item or bypass an account gate."""
     return api("/api/mcp/auto-continue", {"id": paper_id, "retry_unsubmitted": retry_unsubmitted})
 
 

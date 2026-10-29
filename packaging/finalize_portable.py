@@ -9,7 +9,7 @@ import sys
 import zipfile
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from build_portable import digest, source_files, ROOT
+from build_portable import digest, source_files, copy_sources, ROOT
 
 
 def zip_files(root, paths, dest):
@@ -29,12 +29,8 @@ def main():
     out.mkdir(parents=True, exist_ok=False)
     if (folder / 'data').exists():
         raise ValueError('Runtime data found in package; refusing release')
-    # Refresh only the explicit public source allowlist, including final build tools/docs.
-    import shutil
-    for rel in source_files(args.source_ref):
-        dest = folder / rel
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / rel, dest)
+    # Both ZIPs contain the exact committed public source, never working-directory edits.
+    copy_sources(args.source_ref, folder)
     (folder / 'START_HERE.txt').write_text(
         '科研通下载器 · Windows x64 免安装版\n\n'
         '完整解压后，双击“启动科研通下载器.cmd”。\n'

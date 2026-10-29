@@ -419,6 +419,8 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                         if not isinstance(enabled, bool):
                             raise ValueError("请选择 MCP 的科研通操作权限")
                         store.update_preferences(mcp_website_actions=enabled, mcp_actions_account=accounts.active_id if enabled else "")
+                        if not enabled:
+                            pipeline.pause_mcp()
                         store.event("MCP 科研通操作权限已" + ("开启" if enabled else "关闭"))
                         return self.respond(200, {"ok": True})
                     if "rejection_mode" in body:
@@ -676,6 +678,9 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                         # A person pressing 下载/重试 starts fresh: failure counters and the retry schedule are cleared.
                         store.update(body["id"], normal_failures=0, highspeed_failures=0, highspeed_clicks=0, download_retry=None,
                                      **({"status": "ready"} if (store.get(body["id"]) or {}).get("status") == "retrying" else {}))
+                    if body.get("mcp_call") is True:
+                        credentials = {"mcp_scope": {"account_id": accounts.active_id,
+                                                      "item_id": body.get("id"), "auto": False}}
                     agent.enqueue(action, body.get("id"), credentials)
                     if action == "publish":
                         pipeline.publish_limiter.record()   # manual publishes count towards the hourly cap
@@ -756,8 +761,10 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                                      note="已恢复为待处理，可重新采纳或驳回")
                         store.event("已恢复为待处理，可重新尝试：" + title, item_id=item["id"], kind="adopt")
                 elif path == "/api/stop":
+                    store.update_preferences(pipeline_enabled=False)
+                    pipeline.pause_mcp()
                     agent.request_stop()
-                    store.event("已请求停止当前下载，等待浏览器返回。已完成的文件会保留。")
+                    store.event("已停止自动流程及 MCP 后台续办，并请求停止当前操作。已完成的文件和确认记录保留；继续求助须主动恢复。")
                 elif path == "/api/shutdown":
                     shutdown_service(self.server)
                 else:

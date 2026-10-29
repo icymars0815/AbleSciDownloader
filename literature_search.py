@@ -55,6 +55,9 @@ def search_works(query, cursor="*", year_from=None, year_to=None, open_access=Fa
         raise ValueError("OpenAlex 游标翻页需要免费 API Key；请在服务进程环境中配置 OPENALEX_API_KEY 后重启")
     if key:
         params["api_key"] = key
+    url = "https://api.openalex.org/works?" + urlencode(params)
+    if len(url.encode("utf-8")) > 4094:
+        raise ValueError("检索请求编码后超过 OpenAlex 长度上限，请缩短检索词或分组搜索")
     try:
         if mode == "semantic":
             global _last_semantic
@@ -63,9 +66,9 @@ def search_works(query, cursor="*", year_from=None, year_to=None, open_access=Fa
                 if delay > 0:
                     time.sleep(delay)
                 _last_semantic = time.monotonic()
-                data = get_json("https://api.openalex.org/works?" + urlencode(params))
+                data = get_json(url)
         else:
-            data = get_json("https://api.openalex.org/works?" + urlencode(params))
+            data = get_json(url)
     except HTTPError as exc:
         if exc.code == 401:
             raise ValueError("OpenAlex 拒绝认证；检查 API Key，游标翻页需要免费密钥") from None
@@ -77,19 +80,23 @@ def search_works(query, cursor="*", year_from=None, year_to=None, open_access=Fa
     if not isinstance(data, dict) or not isinstance(data.get("results"), list):
         raise ValueError("OpenAlex 返回格式异常")
     records = []
+    def obj(value):
+        return value if isinstance(value, dict) else {}
     for work in data["results"][:page_size]:
         if not isinstance(work, dict):
             continue
-        location = work.get("primary_location") or {}
-        source = location.get("source") or {}
-        authors = [str((a.get("author") or {}).get("display_name") or "")[:200] for a in (work.get("authorships") or [])[:30] if isinstance(a, dict)]
-        oa = work.get("open_access") or {}
-        records.append(dict(id=str(work.get("id") or "")[:150], doi=doi_value(work.get("doi") or ""),
+        location = obj(work.get("primary_location"))
+        source = obj(location.get("source"))
+        byline = work.get("authorships")
+        authors = [str(obj(a.get("author")).get("display_name") or "")[:200]
+                   for a in (byline if isinstance(byline, list) else [])[:30] if isinstance(a, dict)]
+        oa = obj(work.get("open_access"))
+        records.append(dict(id=str(work.get("id") or "")[:150], doi=doi_value(str(work.get("doi") or "")),
                             title=str(work.get("title") or "")[:2000], authors=authors,
                             year=work.get("publication_year"), journal=str(source.get("display_name") or "")[:300],
                             cited_by_count=work.get("cited_by_count"), is_oa=oa.get("is_oa"),
                             is_retracted=work.get("is_retracted"), relevance_score=work.get("relevance_score")))
-    meta = data.get("meta") or {}
+    meta = obj(data.get("meta"))
     return dict(records=records, total=meta.get("count"), next_cursor=meta.get("next_cursor") if mode != "semantic" else None,
                 notice=str(meta.get("notice") or "")[:1000], cost_usd=meta.get("cost_usd"), mode=mode, source="OpenAlex",
                 key_configured=bool(key), paging_requires_api_key=mode != "semantic",

@@ -139,12 +139,13 @@ class McpApi:
                 and not item.get("assist_url") and not item.get("publish_blocked")):
             self.store.update(item["id"], status="ready", note="已恢复尚未提交的后台求助")
             item = self.store.get(item["id"])
-        if item.get("request_confirmed") is not True or stage_of(item) != "queued" or item.get("publish_blocked"):
-            raise ValueError("仅已确认、尚未发布且未暂停的求助可继续后台处理")
+        stage = stage_of(item)
+        if item.get("request_confirmed") is not True or stage not in ("queued", "submitted", "fulfilled", "awaiting_decision") or item.get("publish_blocked"):
+            raise ValueError("仅已确认且无结果不确定或发布阻塞的求助可继续后台处理")
         self.store.update(item["id"], request_mcp_auto_publish=True)
         items = [i for i in self.store.snapshot().get("items", []) if i.get("account_id", "default") == self.accounts.active_id]
         blocked = gate(items, self.points(), item.get("request_reward"))
-        return dict(ok=True, id=item["id"], queued=True, gate=blocked)
+        return dict(ok=True, id=item["id"], queued=stage == "queued", continuing=True, stage=stage, gate=blocked)
 
     # ---- results ----
     def do_result(self, body):

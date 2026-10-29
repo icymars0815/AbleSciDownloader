@@ -42,7 +42,7 @@ class DownloadWorker(BrowserAgent):
     def notifier(self):
         return getattr(self.main, "notifier", None)
 
-    def submit(self, item_id, state):
+    def submit(self, item_id, state, authority=None):
         """Called from the main agent's thread. Raises ValueError if a download is already running."""
         if self.busy:
             raise ValueError("已有下载在进行，同一时间只下载一篇")
@@ -50,7 +50,7 @@ class DownloadWorker(BrowserAgent):
         self._refreshed = False
         self.current_item = item_id
         try:
-            self.enqueue("download", item_id)       # atomic busy check: only one download at a time
+            self.enqueue("download", item_id, authority)  # retain the main thread's MCP authority boundary
         except ValueError:
             self._state, self.current_item = None, ""
             raise

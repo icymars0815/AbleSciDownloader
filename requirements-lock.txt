@@ -1,7 +1,7 @@
 annotated-types==0.8.0
 anyio==4.15.1
 attrs==26.1.0
-certifi==2026.10.18
+certifi==2026.10.23
 cffi==2.1.1
 click==8.5.0
 cryptography==50.0.2
@@ -13,7 +13,7 @@ httpx==0.28.1
 idna==3.20
 jsonschema-specifications==2025.9.1
 jsonschema==4.26.0
-mcp==1.27.1
+mcp==1.30.0
 olefile==0.47
 pillow==13.0.0
 playwright==1.64.0

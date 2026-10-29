@@ -147,7 +147,8 @@ class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
                         self.assertEqual(1, result["confirmed"])
                         planned = server.pipeline.tick_mcp_authorized()
                         self.assertEqual(("publish", closed), (planned["action"], planned["item_id"]))
-                        enqueue.assert_called_once_with("publish", closed)
+                        enqueue.assert_called_once_with("publish", closed,
+                            {"mcp_scope": {"account_id": "default", "item_id": closed, "auto": True}})
             finally:
                 stop(server)
 

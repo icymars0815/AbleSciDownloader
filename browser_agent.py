@@ -124,10 +124,29 @@ class BrowserAgent:
             pass
         return True
 
+    def assert_mcp_authority(self):
+        """Recheck queued/in-flight MCP work at the point of a site action."""
+        scope = getattr(self, "_mcp_scope", None)
+        if not scope:
+            return
+        prefs = self.store.snapshot().get("preferences", {})
+        active = self.accounts.active_id
+        if (self.stop.is_set() or active != scope["account_id"] or not prefs.get("mcp_website_actions")
+                or prefs.get("mcp_actions_account", "default") != active):
+            raise PreconditionError("MCP 后台操作已停止或授权已撤销，未继续操作")
+        if scope.get("auto") and scope.get("item_id"):
+            item = self.store.get(scope["item_id"]) or {}
+            if (item.get("account_id", "default") != active or item.get("request_confirmed") is not True
+                    or item.get("request_mcp_auto_publish") is not True):
+                raise PreconditionError("该文献的 MCP 后台续办已暂停，请主动恢复后继续")
+
+    @contextlib.contextmanager
     def throttled(self):
         """Context manager for one 科研通 navigation/request (agents built without __init__ in tests skip it)."""
         limiter = getattr(self, "limiter", None)
-        return limiter.slot(self.stop) if limiter else contextlib.nullcontext()
+        with limiter.slot(self.stop) if limiter else contextlib.nullcontext():
+            self.assert_mcp_authority()
+            yield
 
     def has_browser(self):
         return bool(self.context)
@@ -152,7 +171,10 @@ class BrowserAgent:
             action, item_id, credentials = self.commands.get()
             self.busy = True
             error = None
+            self._mcp_scope = credentials.get("mcp_scope") if isinstance(credentials, dict) else None
             try:
+                if action != "close":
+                    self.assert_mcp_authority()
                 if action == "close":
                     self._closed = True
                     if getattr(self, "worker", None):
@@ -183,6 +205,7 @@ class BrowserAgent:
                         pass
             finally:
                 credentials = None
+                self._mcp_scope = None
                 self.busy = False
                 try:
                     if action != "close_idle":
@@ -497,7 +520,11 @@ class BrowserAgent:
         if item.get("verification") or item.get("pdf"):
             raise PreconditionError("该条目已有本地 PDF，不会重复下载（避免重复扣分）；请先在本地复核")
         state = self.export_state()
-        self.worker.submit(item_id, state)
+        scope = getattr(self, "_mcp_scope", None)
+        if scope:
+            self.worker.submit(item_id, state, authority={"mcp_scope": scope})
+        else:
+            self.worker.submit(item_id, state)
 
     def download(self, item_id):
         item = self.store.get(item_id)
@@ -1149,6 +1176,7 @@ class BrowserAgent:
         The dialog's own tariff text must match the consented rule; otherwise press 取消 and stop."""
         waited = 0
         while waited <= wait_ms:
+            self.assert_mcp_authority()
             for layer, text in self.visible_layers():
                 compact = re.sub(r"\s+", "", text)
                 if "确认使用高速通道" not in compact:
@@ -1177,6 +1205,7 @@ class BrowserAgent:
         so match by text inside .layui-layer-btn; press only one unambiguous non-cancel button per layer."""
         handled = 0
         for _ in range(max_dialogs * 6):
+            self.assert_mcp_authority()
             if handled >= max_dialogs:
                 return handled
             layers = [(l, t) for l, t in self.visible_layers() if _count(l.locator(".layui-layer-btn a"))]
@@ -1214,6 +1243,7 @@ class BrowserAgent:
             raise ValueError("无法唯一确认该文件的采纳入口，未提交。请打开求助详情手动处理")
         if self.stop.is_set():
             raise ValueError("已停止，未采纳")
+        self.assert_mcp_authority()
         # From here on a timeout means unknown outcome; never click again automatically.
         try:
             self.click_or_handover(item_id, controls, "采纳")
@@ -1463,6 +1493,7 @@ class BrowserAgent:
             self.publish_stop(item_id, "no_submit", "无法唯一确认发布入口，未提交。请在已填写的表单中手动发布", check)
         if self.stop.is_set():
             raise ValueError("已停止，未发布")
+        self.assert_mcp_authority()
 
         def action(status):
             return dict(status=status, point=reward, close_at=close_at, time=now())

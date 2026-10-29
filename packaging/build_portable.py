@@ -5,6 +5,7 @@ Each invocation requires a new output directory; it never cleans previous builds
 """
 import argparse
 import hashlib
+import io
 import json
 import os
 from pathlib import Path
@@ -17,8 +18,6 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]
 PYTHON_URL = 'https://www.python.org/ftp/python/3.13.16/python-3.13.16-embeddable-amd64.zip'
 PYTHON_SHA256 = '589dc1e9d02549ca5f680710307ff9b77f6e3ffc4aa3efccd7fa54eeeafac94b'
-EXTRA = ['runtime_paths.py', 'portable_bootstrap.py', 'packaging/build_portable.py', 'packaging/smoke_portable.py', 'packaging/finalize_portable.py',
-         'docs/PORTABLE.md', 'tests/test_portable.py']
 OMIT = {'data', '.venv', '.git', 'runtime', 'build', 'dist', '__pycache__'}
 
 
@@ -29,7 +28,7 @@ def digest(path):
 
 def source_files(ref):
     raw = subprocess.check_output(['git', 'ls-tree', '-r', '--name-only', '-z', ref], cwd=ROOT)
-    names = set(raw.decode('utf-8').strip('\0').split('\0')) | set(EXTRA)
+    names = set(raw.decode('utf-8').strip('\0').split('\0'))
     for name in sorted(names):
         path = Path(name)
         if path.is_absolute() or '..' in path.parts:
@@ -39,6 +38,16 @@ def source_files(ref):
         if not (ROOT / path).is_file():
             raise FileNotFoundError(path)
         yield path
+
+
+def copy_sources(ref, folder):
+    """Read committed bytes, so local edits cannot slip into a tagged release."""
+    raw = subprocess.check_output(['git', 'archive', '--format=zip', ref], cwd=ROOT)
+    with zipfile.ZipFile(io.BytesIO(raw)) as archive:
+        for rel in source_files(ref):
+            dest = folder / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_bytes(archive.read(rel.as_posix()))
 
 
 def run(*args, env=None):
@@ -57,7 +66,7 @@ def main():
     p.add_argument('--source-ref', required=True, help='Public commit used as source allowlist')
     p.add_argument('--output', required=True, type=Path, help='New directory, never overwritten')
     p.add_argument('--cache', type=Path, default=ROOT / 'build/cache')
-    p.add_argument('--version', default='0.9.1')
+    p.add_argument('--version', default='0.10.0')
     args = p.parse_args()
     if sys.platform != 'win32':
         raise SystemExit('Build this artifact on Windows x64')
@@ -67,11 +76,7 @@ def main():
     cache.mkdir(parents=True, exist_ok=True)
     folder = out / f'AbleSciDownloader-{args.version}-windows-x64'
     folder.mkdir()
-    files = list(source_files(args.source_ref))
-    for file in files:
-        dest = folder / file
-        dest.parent.mkdir(parents=True, exist_ok=True)
-        shutil.copy2(ROOT / file, dest)
+    copy_sources(args.source_ref, folder)
     source_zip = out / f'AbleSciDownloader-{args.version}-source.zip'
     write_zip(folder, source_zip)
     runtime = folder / 'runtime/python'
