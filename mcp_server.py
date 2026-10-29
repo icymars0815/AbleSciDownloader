@@ -186,9 +186,9 @@ def import_references(text: str = "", records: list[dict] | None = None) -> dict
     if records is not None:
         if not isinstance(records, list) or not records:
             raise ValueError("records 不能为空")
-        reply = api("/api/import", {"records": records})
+        reply = api("/api/import", {"records": records, "mcp_call": True})
     elif text.strip():
-        reply = api("/api/import", {"text": text})
+        reply = api("/api/import", {"text": text, "mcp_call": True})
     else:
         raise ValueError("请提供 text 或 records")
     if not reply.get("batch_id"):
@@ -364,6 +364,17 @@ def render_pages(paper_id: str, pages: list[int] | None = None) -> dict:
         return dict(ok=True, **api("/api/mcp/render", {"id": paper_id, "pages": pages or [1]}))
     except ValueError as exc:
         return fail("render_refused", [paper_id], detail=str(exc)[:160])
+
+
+@tool(LOCAL, PRIVACY)
+def resolve_oa_review(paper_id: str, decision: Literal["keep", "site_fallback"], confirmed: bool = False) -> dict:
+    """Resolve a saved OA file after checking its identity and version. keep marks it complete; site_fallback preserves the file and returns the item to the request queue. Requires confirmed=true; never publishes or spends points. Leave ambiguous files under review."""
+    if confirmed is not True:
+        raise ValueError("请先核对全文，再明确选择保留或科研通兜底")
+    if decision not in ("keep", "site_fallback"):
+        raise ValueError("请选择保留全文或科研通兜底")
+    path = "/api/oa-accept" if decision == "keep" else "/api/oa-discard"
+    return api(path, {"id": paper_id, "confirmed": True})
 
 
 @mcp.tool(annotations=LOCAL)

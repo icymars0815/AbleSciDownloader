@@ -27,7 +27,7 @@ EXPECTED_TOOLS = {
     "workbench_status", "list_accounts", "switch_account", "list_papers", "preview_references", "import_references", "query_public_metadata", "search_literature",
     "verify_paper", "website_action", "reject_paper", "stop_website_task", "unparsed_segments", "batch_status", "review_table", "confirm_batch",
     "download_paper", "download_progress", "wait_for", "get_result", "render_pages", "submit_assist_result", "error_report", "monitor_status",
-    "events", "download_settings_get", "oa_lookup", "oa_fetch", "open_panel", "continue_authorized_request"}
+    "events", "download_settings_get", "oa_lookup", "oa_fetch", "open_panel", "continue_authorized_request", "resolve_oa_review"}
 
 
 def start(folder, permission=False, session=True):
@@ -81,6 +81,76 @@ async def call(session, name, args=None):
 
 
 class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
+    async def test_mcp_can_resolve_oa_review_without_publishing(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder)
+            try:
+                ids = []
+                for n in (1, 2):
+                    iid = server.store.add("Paper %d" % n, "10.1234/oa%d" % n, account_id="default")
+                    file = Path(folder) / ("paper%d.pdf" % n)
+                    file.write_bytes(b"%PDF-1.4 fixture")
+                    server.store.update(iid, status="oa_review", pdf=file.name, verification={"status": "review"}, oa_check={"status": "downloaded"})
+                    ids.append(iid)
+                async with connect(server) as session:
+                    error, _ = await call(session, "resolve_oa_review", {"paper_id": ids[0], "decision": "keep"})
+                    self.assertTrue(error)
+                    self.assertEqual("oa_review", __import__("pipeline").stage_of(server.store.get(ids[0])))
+                    error, _ = await call(session, "resolve_oa_review", {"paper_id": ids[0], "decision": "keep", "confirmed": True})
+                    self.assertFalse(error)
+                    self.assertEqual("done", __import__("pipeline").stage_of(server.store.get(ids[0])))
+                    error, _ = await call(session, "resolve_oa_review", {"paper_id": ids[1], "decision": "site_fallback", "confirmed": True})
+                    self.assertFalse(error)
+                    second = server.store.get(ids[1])
+                    self.assertEqual("queued", __import__("pipeline").stage_of(second))
+                    self.assertTrue((Path(folder) / "paper2.pdf").exists())
+                    self.assertFalse(second.get("request_confirmed"))
+            finally:
+                stop(server)
+
+    async def test_search_import_oa_and_confirmed_site_fallback_end_to_end(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder, permission=True)
+            try:
+                found = {"records": [{"title": "Open paper", "doi": "10.1234/open", "authors": ["A"]},
+                                     {"title": "Closed paper", "doi": "10.1234/closed", "authors": ["B"]}], "total": 2}
+                def fetch(doi, dest, *args, **kwargs):
+                    if doi.endswith("/open"):
+                        Path(dest).write_bytes(b"%PDF-1.4\nfixture")
+                        return {"status": "downloaded", "attempts": [], "source": "fixture"}
+                    return {"status": "not_oa", "attempts": []}
+                with patch("literature_search.search_works", return_value=found), patch("oa_fetch.fetch_open_access", side_effect=fetch), \
+                     patch("pipeline.verify_with_metadata", return_value={"status": "identity_match", "sha256": "fixture"}), \
+                     patch.object(server.agent, "enqueue") as enqueue:
+                    async with connect(server) as session:
+                        error, search = await call(session, "search_literature", {"query": "probiotic"})
+                        self.assertFalse(error)
+                        error, imported = await call(session, "import_references", {"records": search["records"]})
+                        self.assertFalse(error)
+                        bid = imported["batch_id"]
+                        self.assertEqual("mcp", intake.find_batch(server.store, bid)["origin"])
+                        for _ in range(2):
+                            iid = intake.next_screening(server.store)
+                            self.assertIsNotNone(iid)
+                            server.pipeline.oa_run(iid)
+                        self.assertIsNone(intake.next_screening(server.store))
+                        error, review = await call(session, "review_table", {"batch_id": bid})
+                        self.assertFalse(error)
+                        rows = {r["doi"]: r for r in review["rows"]}
+                        self.assertEqual("oa_done", rows["10.1234/open"]["code"])
+                        self.assertEqual("not_oa", rows["10.1234/closed"]["code"])
+                        closed = rows["10.1234/closed"]["id"]
+                        error, preview = await call(session, "confirm_batch", {"batch_id": bid, "item_ids": [closed]})
+                        self.assertFalse(error)
+                        error, result = await call(session, "confirm_batch", {"batch_id": bid, "confirm_token": preview["confirm_token"], "confirmed": True})
+                        self.assertFalse(error)
+                        self.assertEqual(1, result["confirmed"])
+                        planned = server.pipeline.tick_mcp_authorized()
+                        self.assertEqual(("publish", closed), (planned["action"], planned["item_id"]))
+                        enqueue.assert_called_once_with("publish", closed)
+            finally:
+                stop(server)
+
     async def test_openalex_key_setting_is_private_and_used_for_search(self):
         with tempfile.TemporaryDirectory() as folder:
             server = start(folder)
@@ -394,6 +464,18 @@ class HarnessMcpTests(unittest.IsolatedAsyncioTestCase):
 
 
 class WarningTests(unittest.TestCase):
+    def test_structured_import_rejects_invalid_batch_without_partial_changes(self):
+        with tempfile.TemporaryDirectory() as folder:
+            server = start(folder)
+            try:
+                client = Client("http://127.0.0.1:%d" % server.server_port)
+                from kytdl_client import ApiError
+                for bad in ({"title": None, "doi": None}, {"title": "x", "authors": "not a list"}, "not an object"):
+                    with self.assertRaises(ApiError):
+                        client.post("/api/import", {"records": [{"title": "valid"}, bad]})
+                    self.assertEqual([], server.store.snapshot()["items"])
+            finally:
+                stop(server)
     def test_resume_pre_submit_only(self):
         with tempfile.TemporaryDirectory() as folder:
             server = start(folder, permission=True)

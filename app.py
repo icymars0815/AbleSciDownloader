@@ -309,19 +309,25 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                     if "records" in body:
                         if not isinstance(body["records"], list) or len(body["records"]) > 200:
                             raise ValueError("每次最多导入 200 篇")
+                        if any(not isinstance(r, dict) or not isinstance(r.get("authors", []), list)
+                               or any(r.get(k) is not None and not isinstance(r.get(k), str) for k in ("title", "doi"))
+                               for r in body["records"]):
+                            raise ValueError("文献记录须为对象，作者须为列表")
                         source = "AI整理" if body.get("ai_assisted") is True else "text"
-                        records = [make_record(str(r.get("title", "")), [str(a)[:200] for a in r.get("authors", [])][:300], str(r.get("doi", "")), source) for r in body["records"]]
+                        records = [make_record(r.get("title") or "", [str(a)[:200] for a in r.get("authors", [])][:300], r.get("doi") or "", source) for r in body["records"]]
+                        if any(not r["title"] and not r["doi"] for r in records):
+                            raise ValueError("每条文献至少需要有效标题或 DOI")
                     else:
                         records = parse_references(body.get("text", ""))
                     batch_id = intake.new_batch_id()
-                    before = len(store.snapshot()["items"])
                     for record in records:
                         store.add(record["title"], record["doi"], account_id=accounts.active_id, authors=record["authors"], import_format=record["format"],
                                   batch_id=batch_id, request_confirmed=False)
-                    count = len(store.snapshot()["items"]) - before
                     new_ids = [i["id"] for i in store.snapshot()["items"] if i.get("batch_id") == batch_id]
+                    count = len(new_ids)
                     if new_ids:
-                        intake.create_batch(store, batch_id, accounts.active_id, new_ids)
+                        intake.create_batch(store, batch_id, accounts.active_id, new_ids,
+                                            origin="mcp" if body.get("mcp_call") is True else "app")
                     store.event(f"已导入 {count} 条新文献，重复项已跳过。尚未发布求助。")
                     if new_ids and pipeline.auto_screen:
                         pipeline.screen_step()

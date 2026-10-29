@@ -185,6 +185,13 @@ class MonitorFlowTests(unittest.TestCase):
         self.monitor.scan([pending])
         self.assertEqual(1, len(self.toasts))
 
+    def test_mcp_oa_captcha_does_not_prompt_when_site_fallback_is_available(self):
+        self.store.data["batches"] = [{"id": "b", "origin": "mcp"}]
+        item = dict(id="x", title="paper", doi="10.1234/x", source="import", status="ready",
+                    batch_id="b", account_id="default", oa_check={"status": "needs_human"})
+        self.monitor.scan([item])
+        self.assertEqual([], self.toasts)
+
     def test_tick_waits_for_due_time_and_session(self):
         self.put(waiting("a", 10))
         self.assertIsNone(self.monitor.tick(T))                # START_DELAY not reached

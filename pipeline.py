@@ -401,6 +401,14 @@ class Pipeline:
             self.oa_run(item_id, human, **(options or {}))
         except Exception as exc:
             applog.record(self.store, "oa", "worker", exc, item_id=item_id)
+            # Leave a terminal OA result rather than repeatedly rescheduling a crashing worker.
+            try:
+                item = self.store.get(item_id) or {}
+                if not item.get("oa_check") and not item.get("pdf"):
+                    self.store.update(item_id, oa_check=dict(status="failed", attempts=[], time=clock()),
+                                      note="免费全文筛选发生异常，可重试或选择科研通求助。")
+            except Exception as recovery_exc:
+                applog.record(self.store, "oa", "worker_recovery", recovery_exc, item_id=item_id)
         finally:
             self.oa_running = None
             try:

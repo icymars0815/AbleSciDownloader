@@ -56,9 +56,9 @@ def new_batch_id():
     return uuid.uuid4().hex[:10]
 
 
-def create_batch(store, batch_id, account_id, item_ids):
+def create_batch(store, batch_id, account_id, item_ids, origin="app"):
     with store.lock:
-        batch = dict(id=batch_id, account_id=account_id, created=now(), item_ids=list(item_ids), screened=[], screening_done_at=None,
+        batch = dict(id=batch_id, account_id=account_id, origin=origin, created=now(), item_ids=list(item_ids), screened=[], screening_done_at=None,
                      confirmed_at=None, confirmed_ids=[], prompted=False, deferred_at=None)
         batches = store.data.setdefault("batches", [])
         batches.append(batch)
@@ -91,9 +91,12 @@ def next_screening(store, oa_first=True, notifier=None):
                 continue
             if oa_first:
                 for item in _items_of(store.data, batch):
-                    if item["id"] not in batch["screened"] and screening_candidate(item):
-                        batch["screened"].append(item["id"])
-                        store.save()
+                    if screening_candidate(item):
+                        # An interrupted worker may have marked the item before saving its result.
+                        # Pipeline.screen_step serializes workers, so a still-missing result is retryable.
+                        if item["id"] not in batch["screened"]:
+                            batch["screened"].append(item["id"])
+                            store.save()
                         return item["id"]
             batch["screening_done_at"] = now()
             finished.append(batch["id"])
@@ -109,9 +112,12 @@ def _announce_screened(store, batch_id, notifier=None):
     batch = next(b for b in snap["batches"] if b["id"] == batch_id)
     rows = [classify(i, True) for i in _items_of(snap, batch)]
     wanted = sum(1 for r in rows if r["checked"])
-    if any(r["selectable"] for r in rows):
+    review_count = sum(1 for r in rows if r["code"] == "oa_review")
+    if review_count and not any(r["selectable"] for r in rows):
+        store.event("免费全文筛选完成：%d 篇已下载，待核对。" % review_count, kind="intake", batch_id=batch_id, action="open-batch")
+    elif any(r["selectable"] for r in rows):
         store.event("免费全文筛选完成：%d 条建议向科研通求助，待确认。" % wanted, kind="intake", batch_id=batch_id, action="open-batch")
-        if notifier:
+        if notifier and batch.get("origin") != "mcp":
             notifier.notify("needs_action", "batch:" + batch_id, "待确认求助清单", "免费全文筛选完成：%d 条建议向科研通求助，待确认。" % wanted)
     else:
         store.event("免费全文筛选完成：无需向科研通求助。", kind="intake", batch_id=batch_id)
@@ -161,12 +167,14 @@ def phase_of(batch, items):
         return "screening"
     mine = [i for i in items if i.get("request_batch_id") == batch["id"] and i.get("request_confirmed") is True]
     if not mine:
-        return "awaiting_confirmation" if any(classify(i)["selectable"] for i in items) else "done"
+        return "awaiting_confirmation" if any(classify(i)["selectable"] or classify(i)["code"] == "oa_review" for i in items) else "done"
     stages = [stage_of(i) for i in mine]
     if any(s in ("queued", "attention") for s in stages):
         return "requesting"
     if any(s in ("submitted", "fulfilled", "downloading", "awaiting_decision") for s in stages):
         return "monitoring"
+    if any(classify(i)["code"] == "oa_review" for i in items):
+        return "awaiting_confirmation"
     return "done"
 
 
@@ -207,7 +215,10 @@ def public_batch(batch, items, prefs, points):
         conf = "done"
     else:
         conf = "skipped"
-    steps.append(dict(key="confirm", label="已确认 %d 条求助" % len(mine) if conf == "done" else "待确认（%d 条需求助）" % want, status=conf, detail=""))
+    review_count = sum(1 for r in rows if r["code"] == "oa_review")
+    label = ("已确认 %d 条求助" % len(mine) if conf == "done" else
+             "免费全文待核对 %d 条" % review_count if review_count and not want else "待确认（%d 条需求助）" % want)
+    steps.append(dict(key="confirm", label=label, status=conf, detail=""))
     confirmed = conf == "done"
     req = "error" if errors else "pending" if not confirmed else "done" if phase in ("monitoring", "done") else "active"
     steps.append(dict(key="request", label="科研通求助 %d/%d" % (published, len(mine)), status=req, detail=""))

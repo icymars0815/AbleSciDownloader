@@ -408,6 +408,12 @@ class PipelineOATests(unittest.TestCase):
     def verification(self, status):
         return patch("pipeline.verify_with_metadata", lambda *a, **k: dict(status=status, reason="mock", sha256="x"))
 
+    def test_worker_exception_records_failed_oa_result_without_infinite_rescreen(self):
+        with patch.object(self.pipeline, "oa_run", side_effect=RuntimeError("unexpected")), \
+             patch.object(self.pipeline, "screen_step"):
+            self.pipeline._oa_worker(self.item, False)
+        self.assertEqual("failed", self.store.get(self.item)["oa_check"]["status"])
+
     def test_success_identity_match_is_done(self):
         with patch("oa_fetch.fetch_open_access", self.result()), self.verification("identity_match"):
             self.pipeline.oa_run(self.item)
