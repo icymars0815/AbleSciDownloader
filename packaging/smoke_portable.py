@@ -77,7 +77,7 @@ def main():
             # Exercise the new settings with a fictional key, entirely on loopback.
             page.get_by_role('button', name='我已了解', exact=True).click()
             page.locator('#settingsBtn').click()
-            page.locator('#tab-pipeline').click()
+            page.locator('#tab-download').click()
             key = page.locator('#openalexKey')
             key.wait_for(state='visible')
             assert key.get_attribute('type') == 'password'
