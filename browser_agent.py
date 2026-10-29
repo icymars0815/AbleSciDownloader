@@ -1361,7 +1361,7 @@ class BrowserAgent:
                 raise PreconditionError(blocked["reason"])
             return stored
         stored_before = recheck()
-        self.goto("/assist/create", interactive=True)
+        self.goto("/assist/create", interactive=False)
         try:
             points = self.read_points()
         except Exception:

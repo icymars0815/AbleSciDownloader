@@ -64,11 +64,14 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 | switch_account | 切换已有账户，不弹出登录窗口 | 本地 |
 | list_papers | 当前账户队列摘要（分页、紧凑） | 只读 |
 | preview_references | 本地解析引用 | 只读 |
+| search_literature | 按关键词、年份及开放获取状态检索 OpenAlex，返回书目和分页游标；不自动导入或下载 | 公共网络 |
 | unparsed_segments | 返回本地规则没认出来的段落，交给 harness 的模型自己解析 | 只读 |
 | import_references | 导入文本，或导入 harness 自己解析好的结构化记录；新建批次并自动做免费源筛选，不发布 | 本地 |
 | batch_status | 批次进度（筛选 / 待确认 / 求助中 / 监控 / 完成）与该批次事件 | 只读 |
 | review_table | 确认表：每篇的免费源结果、建议、悬赏积分、版本、撤稿标记 | 只读 |
 | confirm_batch | 两步确认进入科研通求助：先预览，再带令牌确认 | 预览不需授权；确认需授权 |
+| continue_authorized_request | 恢复此前已明确确认的单条求助的后台处理，不扩大授权范围 | 需科研通操作权限 |
+| resolve_oa_review | 核对后保留 OA 全文或保留原文件并改走科研通；不发布求助 | 本地操作，需明确 decision 和 confirmed=true |
 | download_paper | 对已收到应助的条目启动下载，按你在 App 里设的高速档位，harness 不能改 | 需授权 |
 | download_progress | 当前线路、速度、剩余时间、失败原因，并给出该条目的面板地址 | 只读 |
 | wait_for | 长轮询等批次或条目到达某状态（最长 600 秒），返回等待期间的事件 | 只读 |
@@ -87,7 +90,7 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 | reject_paper | 明确理由并确认后拒绝应助 | 需授权，且 confirmed=true |
 | stop_website_task | 停止当前浏览器任务，保留文件 | 本地 |
 
-刻意没有的工具：修改高速档位、自动发布 / 采纳 / 拒绝、AI 设置、MCP 授权开关、读取密码 / Key / Cookie、读取任意路径、执行命令、访问任意网址。
+刻意没有的工具：修改高速档位、绕过逐条确认发布或拒绝、AI 设置、MCP 授权开关、读取密码 / Key / Cookie、读取任意路径、执行命令、访问任意网址。
 
 ### 返回内容的大小
 
@@ -97,7 +100,11 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 
 1. `confirm_batch(batch_id)` 只做预览：返回要求助的条目、每篇悬赏、预计最多花多少积分，以及一个 5 分钟内有效、只能用一次的 `confirm_token`。令牌由本地服务生成，绑定“这个批次 + 这些条目 + 这些悬赏 + 当前账户”，harness 无法伪造。
 2. harness 必须把预览给你看。你同意后，它再调用 `confirm_batch(batch_id, confirm_token, confirmed=true)`。令牌错误、过期、已用过、批次或条目对不上，都会被拒绝；没开授权也会被拒绝。
-3. 确认只是把这些条目标记为“允许求助”，之后由 App 按固定规则发布，并受每小时发布上限等限制。
+3. 确认后，所选条目由后台按固定规则自动发布、同步和下载，不弹出常规求助窗口；不影响未选条目。已核验的本人应助仅在文件身份、书目信息和文件哈希均通过严格检查时自动采纳；不自动驳回。积分门槛、发布间隔、当前账户及已有下载设置仍然生效。验证码、身份不确定、结果不明或站点阻塞无法自动解决时，保留进度并交给用户。
+4. 免费全文不可用、遇到验证码或账户门槛阻塞，不代表科研通求助失败。发布后等待应助也不是失败；只有站点明确显示失败，或能够核实求助期限已经结束且未收到应助时，才可判定失败。无法核实的关闭状态保持待核实，不自行编造超时期限。
+5. `continue_authorized_request(..., retry_unsubmitted=true)` 仅在已确认条目能证明尚未进入提交阶段时恢复中断；有提交记录或结果不确定时，不自动重试。其他未授权条目不会遮住已授权应助的下载；发布时仍遵守当前账户的站点限制。
+6. OA 筛选中断后，没有结果的条目会在恢复时重试；意外失败记录为免费全文失败，不自动等同于求助失败。已下载但身份核对尚不完整的 OA 文件保持待核对，批次不会被报告为完成。
+7. MCP 导入的批次通过状态和事件回报 OA 筛选结果，不为例行求助清单或 OA 验证页弹出通知；调用方可按授权范围继续科研通兜底。需要登录、状态不明或无法自动核验等问题仍可提示处理，未绕过网站验证。
 
 ## 示例工作流
 
@@ -110,6 +117,8 @@ harness 在后台操作时，你可以随时打开工作台窗口查看下载状
 7. `get_result(paper_id)`：拿到本地路径、原文件名、核对结论、撤稿提示，向你汇报。采纳 / 拒绝 / 发布仍由你在 App 里决定。
 
 只要免费全文：`oa_fetch(doi)`，然后 `wait_for(id, until="oa_finished")`，再 `get_result(id)`。
+
+文献搜索：`search_literature(query="gut microbiome polyphenols", year_from=2020, page_size=50, mode="keyword")`。`mode` 也可设 `exact`（精确词/布尔式）或 `semantic`（语义向量）；语义搜索单次最多 50 条，不支持游标，分数用于排序，不是概率。关键词与精确搜索每页最多 100 条，把返回的 `next_cursor` 连同相同的查询和筛选条件传入下一次调用；**第二页起需免费 API Key**。按 DOI 或 OpenAlex ID 去重；只把人工或 harness 筛选后的 `{title, doi, authors}` 记录交给 `import_references`，每次最多 200 条。检索词会发送给 OpenAlex，结果与撤稿标识需独立核实。匿名查询共享 IP 的额度，可能随政策变化；可在设置 → 下载 → OpenAlex 文献搜索中输入并用 Windows 当前用户加密保存；也可通过服务进程环境变量 `OPENALEX_API_KEY` 配置（已保存密钥优先），勿写入源码、记录或对话。免费密钥申请：https://openalex.org/settings/api 。
 
 ## harness 的模型代替内置 AI
 
@@ -131,6 +140,7 @@ Claude Code、Codex 这类客户端自带模型，能读文字也能看图。经
 ```
 kytdl status                       服务状态、授权、监控、最近批次
 kytdl import <文件|->              导入引用（txt/csv/ris/bib/docx；- 表示读标准输入），只做免费源筛选
+kytdl search "关键词" [--mode keyword|exact|semantic] [--year-from 2020] [--year-to 2026] [--open-access] [--page-size 50] [--cursor 游标] --json
 kytdl oa <DOI> [--download]        查找免费全文；加 --download 则下载并本地核对
 kytdl batch [<批次ID>]             批次列表，或某批次的确认表
 kytdl events [-n 20]               最近事件

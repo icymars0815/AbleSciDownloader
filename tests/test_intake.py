@@ -132,6 +132,42 @@ class Flow(unittest.TestCase):
         self.assertEqual("oa_done", rows[b]["code"])
         self.assertEqual(10, rows[a]["reward"])
 
+    def test_interrupted_screening_is_retried_before_batch_finishes(self):
+        a, b, c, d = self.make_batch()
+        self.assertEqual(a, intake.next_screening(self.store))
+        # Simulate a restart after the selection was persisted but before any OA result was saved.
+        reopened = Store(self.temp.name)
+        self.assertEqual(a, intake.next_screening(reopened))
+        self.assertFalse(intake.find_batch(reopened, "B1").get("screening_done_at"))
+        reopened.update(a, oa_check={"status": "failed"})
+        self.assertEqual(b, intake.next_screening(reopened))
+
+    def test_downloaded_oa_pending_review_is_not_marked_complete(self):
+        iid = self.store.add("Open paper", "10.1234/open", account_id="default", batch_id="B2")
+        intake.create_batch(self.store, "B2", "default", [iid])
+        self.store.update(iid, status="oa_review", pdf="oa/open.pdf", oa_check={"status": "downloaded"},
+                          verification={"status": "review"})
+        intake.next_screening(self.store)
+        batch = intake.public_batches(self.store.snapshot(), "default", {}, 100)[0]
+        self.assertEqual("awaiting_confirmation", batch["phase"])
+        self.assertEqual("免费全文待核对 1 条", batch["steps"][2]["label"])
+        self.assertEqual(0, batch["counts"]["finished"])
+        another = self.store.add("Site paper", "10.1234/site", account_id="default", batch_id="B2", source="website",
+                                 owned=True, website_status="已完结", request_confirmed=True, request_batch_id="B2")
+        self.store.mutate(lambda data: next(b for b in data["batches"] if b["id"] == "B2")["item_ids"].append(another))
+        self.assertEqual("awaiting_confirmation", intake.public_batches(self.store.snapshot(), "default", {}, 100)[0]["phase"])
+        self.store.update(iid, done_via="oa", status="checked")
+        self.assertEqual("done", intake.public_batches(self.store.snapshot(), "default", {}, 100)[0]["phase"])
+
+    def test_mcp_batch_keeps_status_without_requesting_user_popup(self):
+        iid = self.store.add("No OA", "10.1234/nooa", account_id="default", batch_id="MCP")
+        intake.create_batch(self.store, "MCP", "default", [iid], origin="mcp")
+        self.store.update(iid, oa_check={"status": "not_oa"})
+        notifier = MagicMock()
+        intake.next_screening(self.store, notifier=notifier)
+        notifier.notify.assert_not_called()
+        self.assertEqual("awaiting_confirmation", intake.public_batches(self.store.snapshot(), "default", {}, 100)[0]["phase"])
+
     def test_confirm_rules(self):
         a, b, c, d = self.make_batch()
         for i in (a, b, d):

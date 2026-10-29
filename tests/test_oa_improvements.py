@@ -489,6 +489,19 @@ class CacheTests(FastClock):
         _, third = self.find({"api.openalex.org": j(self.CLOSED)})
         self.assertTrue(third.calls)
 
+    def test_legacy_pmc_cache_is_refreshed_without_deletion(self):
+        old = dict(self.OA, ids={"pmcid": "PMC123456"})
+        info, _ = self.find({"api.openalex.org": j(old)})
+        cache = oa_fetch._cache_file(self.temp.name, DOI)
+        saved = json.loads(cache.read_text("utf-8"))
+        saved["result"]["attempts"] = [a for a in saved["result"]["attempts"] if a.get("source") != "PMC Cloud"]
+        cache.write_text(json.dumps(saved), "utf-8")
+        refreshed, router = self.find({"api.openalex.org": j(old)})
+        self.assertTrue(router.calls)
+        self.assertFalse(refreshed.get("cached"))
+        self.assertTrue(any(a.get("source") == "PMC Cloud" for a in refreshed["attempts"]))
+        self.assertTrue(cache.exists())
+
     def test_failures_are_not_cached(self):
         info, _ = self.find({"": OAError("URLError")})
         self.assertFalse(info["lookup_ok"])

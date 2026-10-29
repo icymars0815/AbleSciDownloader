@@ -360,11 +360,16 @@ class Monitor:
     def scan(self, items):
         """Notify about items that now need the person (deduplicated per item and kind)."""
         prefs = self.prefs()
+        mcp_batches = {b.get("id") for b in self.store.snapshot().get("batches", []) if b.get("origin") == "mcp"}
         for item in items:
             stage, iid = stage_of(item), item["id"]
             title = "《%s》" % (item.get("title") or item.get("doi") or "?")[:40]
             verdict = (item.get("verification") or {}).get("status")
-            if stage == "attention":
+            # An attempted action is written before the website confirms it. While the worker
+            # is still running it is progress, not yet a request for human intervention.
+            in_flight = bool(self.agent.busy and any((item.get(k) or {}).get("status") == "attempted"
+                             for k in ("publish_action", "adopt_action", "reject_action")))
+            if stage == "attention" and not in_flight:
                 self.notifier.notify("needs_action", iid, "需处理", title + "需处理：" + str(item.get("note") or item.get("website_status") or "请查看")[:80])
             elif stage == "awaiting_decision" and item.get("source") == "website":
                 if verdict == "identity_match":
@@ -374,7 +379,7 @@ class Monitor:
             else:
                 self.notifier.reset(iid, "needs_action")
             status = (item.get("oa_check") or {}).get("status")
-            if status == "needs_human":
+            if status == "needs_human" and not item.get("request_confirmed") and item.get("batch_id") not in mcp_batches:
                 self.notifier.notify("needs_human", iid, "需人工验证", title + "的免费全文页面需人工验证。")
             else:
                 self.notifier.reset(iid, "needs_human")

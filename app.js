@@ -221,7 +221,7 @@ function taskHtml(i, busy) {
     ? `<div class="deltag">${dl.state === 'deleted'
       ? `<span class="tag deleted">科研通文件已删除</span>${i.pdf ? '<span class="tag keep">本地副本保留</span>' : '<span>已无法下载</span>'}`
       : `<span>${esc(dl.text)}</span>${dl.at ? `<span class="tag">剩余 <span class="cd" data-at="${esc(dl.at)}"></span></span>` : ''}`}</div>` : '';
-  return `<article class="task" data-task="${id}"><div class="tasktop"><div><div class="source">${esc(src)}</div><h3>${esc(i.title || '标题待补充')}</h3><div class="doi">${esc(i.expected_doi || i.doi || '未提供 DOI')}</div></div><div class="chips">${oaChip}${versionChip(i.oa_check)}${unconfirmed}${stageChip}<span class="tag workflow-${esc(w)}"><span class="status-dot"></span>${esc(workflowNames[w] || w)}</span></div></div>${linkList}${delRow}${localFileRow(i)}${retractionWarning(i)}${downloadInfo(i)}${handoverInfo(i)}${publishInfo(i)}${i.note ? `<div class="note">${esc(human(i.note))}</div>` : ''}${v ? `<div class="verdict"><b>${esc(human(v.reason))}</b><div>标题相似度 ${esc(v.title_score)}%${v.pages ? ' · ' + v.pages + ' 页' : ''}</div></div>` : ''}${bookInfo(i)}${rejectionInfo(i)}${aiInfo(i)}<div class="actions">${buttons.join('')}${i.stage === 'attention' ? '<button data-action="settings" data-id="logs" title="生成已脱敏的错误报告">生成错误报告</button>' : ''}</div></article>`;
+  return `<article class="task" data-task="${id}"><div class="tasktop"><div><div class="source">${esc(src)}</div><h3>${esc(i.title || '标题待补充')}</h3><div class="doi">${esc(i.expected_doi || i.doi || '未提供 DOI')}</div></div><div class="chips">${oaChip}${versionChip(i.oa_check)}${unconfirmed}${stageChip}${i.acquisition ? `<span class="tag">${esc(i.acquisition.label)}</span>` : ''}<span class="tag workflow-${esc(w)}"><span class="status-dot"></span>${esc(workflowNames[w] || w)}</span></div></div>${linkList}${delRow}${localFileRow(i)}${retractionWarning(i)}${downloadInfo(i)}${handoverInfo(i)}${publishInfo(i)}${i.note ? `<div class="note">${esc(human(i.note))}</div>` : ''}${v ? `<div class="verdict"><b>${esc(human(v.reason))}</b><div>标题相似度 ${esc(v.title_score)}%${v.pages ? ' · ' + v.pages + ' 页' : ''}</div></div>` : ''}${bookInfo(i)}${rejectionInfo(i)}${aiInfo(i)}<div class="actions">${buttons.join('')}${i.stage === 'attention' ? '<button data-action="settings" data-id="logs" title="生成已脱敏的错误报告">生成错误报告</button>' : ''}</div></article>`;
 }
 
 /* ---------- main render ---------- */
@@ -743,6 +743,8 @@ function oaSettings() {
   return `<h4 style="margin-top:22px">免费全文</h4>
 <div class="setrow"><div><b>优先查找免费全文</b><small>开启后，带 DOI 的导入文献会先查找并下载合法的免费全文，本地核对通过即视为完成，不消耗积分；找不到或下载失败时，再向科研通求助。查找时会向 OpenAlex、Europe PMC、NCBI PMC、Semantic Scholar、Crossref、arXiv、bioRxiv 发送 DOI（填写联系邮箱后还会查询 Unpaywall）。关闭后不查找免费全文，导入后由用户决定是否求助。</small></div>${sw('oa-toggle', null, on, '优先查找免费全文')}</div>
 <div class="setrow"><div><b>人机验证</b><small>遇到人机验证页时，软件不会自动绕过验证。“提示”：标记为需人工验证，由用户选择打开验证窗口或改走科研通。</small></div>${seg('人机验证处理方式', [['prompt', '提示'], ['popup', '弹出窗口'], ['skip', '改走科研通']], mode, 'oa-mode')}</div>
+<h4 style="margin-top:22px">OpenAlex 文献搜索</h4>
+<div class="setrow"><div><b>${state.openalex_key_saved ? 'OpenAlex 密钥已保存' : state.openalex_env_configured ? '使用环境变量中的 OpenAlex 密钥' : '尚未配置 OpenAlex 密钥'}</b><small>匿名查询使用共享额度；关键词游标翻页需要免费 API Key。语义搜索单次最多 50 条，按服务商额度计费。可在 <a href="https://openalex.org/settings/api" target="_blank" rel="noopener noreferrer">OpenAlex 申请免费密钥 ↗</a>。密钥使用 Windows 当前用户加密保存，不会再次显示；清除保存密钥后，如设置了环境变量仍会继续使用该环境变量。</small></div><div class="timerow"><input id="openalexKey" type="password" maxlength="256" autocomplete="off" placeholder="输入密钥" aria-label="OpenAlex API Key"><button data-action="openalex-key-save">保存</button><button data-action="openalex-key-clear" ${state.openalex_key_saved ? '' : 'disabled'}>清除</button></div></div>
 <h4 style="margin-top:22px">CORE 密钥（可选）</h4>
 <div class="setrow"><div><b>${p.core_key_configured ? 'CORE 密钥已设置' : 'CORE 密钥未设置'}</b><small>CORE 是免费论文库，使用密钥后才可查询；未设置时跳过该来源，其他来源不受影响。设置后，查找免费全文时会将 DOI 和密钥发送至 CORE（api.core.ac.uk）。密钥仅保存在本机，不会再次显示，也不会写入日志；留空保存即清除。可在 CORE 官网免费申请。</small></div><div class="timerow"><input id="coreKey" type="password" maxlength="200" autocomplete="off" placeholder="${p.core_key_configured ? '已保存，重新填写将替换' : '可不填'}" aria-label="CORE 密钥（可选）"><button data-action="core-key-save">保存</button><button data-action="core-key-clear" ${p.core_key_configured ? '' : 'disabled'}>清除</button></div></div>
 <h4 style="margin-top:22px">查找缓存</h4>
@@ -1144,6 +1146,12 @@ async function run(a, id) {
       return;
     }
     case 'core-key-clear': if (await action('pipeline', { core_api_key: '' })) { lastPanel = ''; renderSettingsPanel(); notice('CORE 密钥已清除'); } return;
+    case 'openalex-key-save': {
+      const key = $('openalexKey').value; $('openalexKey').value = '';
+      if (await action('openalex-key', {key})) { lastPanel = ''; renderSettingsPanel(); notice('OpenAlex 密钥已加密保存'); }
+      return;
+    }
+    case 'openalex-key-clear': if (await action('openalex-key-clear')) { lastPanel = ''; renderSettingsPanel(); notice('已清除保存的 OpenAlex 密钥'); } return;
     case 'oa-cache-clear': if (await action('oa-cache-clear')) notice('已清除免费全文查找缓存'); return;
     case 'raise-mode':
       if (id === 'ask') return action('pipeline', { raise_mode: 'ask' });

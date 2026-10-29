@@ -125,6 +125,37 @@ def gate(items, points, reward=None):
     return dict(blocked=False, item_id=None, reason="")
 
 
+def acquisition_state(item, blocked_gate=None):
+    """Describe progress without treating an OA failure or site block as final acquisition failure.
+
+    A closed site record alone does not identify whether it expired unanswered;
+    that remains unresolved until the site's outcome is verified.
+    """
+    stage = stage_of(item)
+    status = (item.get("website_status") or "").strip()
+    if item.get("pdf"):
+        if stage == "oa_review" or (item.get("verification") or {}).get("status") not in (None, "identity_match"):
+            return dict(code="file_needs_review", label="文件待核对")
+        return dict(code="file_available", label="已获得文件")
+    if status in ("已关闭", "关闭"):
+        return dict(code="closed_unverified", label="求助已关闭，结果待核实")
+    if stage == "done":
+        return dict(code="completed_without_file", label="求助已完结，文件未取得")
+    if stage in ("fulfilled", "downloading", "awaiting_decision"):
+        return dict(code="answer_available", label="已收到应助，待下载或处理")
+    if stage == "submitted":
+        return dict(code="waiting_answer", label="求助中，等待应助")
+    if stage == "attention":
+        return dict(code="needs_review", label="状态需核实")
+    if item.get("request_confirmed") is True and (blocked_gate or {}).get("blocked"):
+        return dict(code="blocked", label="等待处理既有应助后继续求助", blocking_item_id=blocked_gate.get("item_id"))
+    if item.get("request_confirmed") is True:
+        return dict(code="waiting_to_publish", label="已确认求助，等待发布")
+    if (item.get("oa_check") or {}).get("status") in ("not_oa", "failed", "needs_human", "skipped"):
+        return dict(code="oa_unavailable", label="免费全文未取得，可继续科研通求助")
+    return dict(code="pending", label="待处理")
+
+
 def step(action, item=None, label="", requires_user=False, reason=""):
     return dict(action=action, item_id=item["id"] if item else None, label=label, requires_user=requires_user, reason=reason)
 
@@ -193,13 +224,13 @@ def next_step(items, account, prefs, now, session=True, local=True):
         if _auto_adopt_ok(item, prefs):
             return step("adopt", item, "自动采纳完全匹配的应助", False, "DOI、标题、作者与摘要均匹配")
     pending = of("awaiting_decision")
-    if pending:
-        return step("wait_user", pending[0], "待采纳或驳回", True, "请采纳或驳回" + _title(pending[0]) + "，自动流程将继续")
     ready = [i for i in of("fulfilled") if not retry_waiting(i, now)] if session else []
     if ready:
         return step("download", ready[0], "下载应助文件", False, _title(ready[0]) + "已有应助文件")
+    if pending:
+        return step("wait_user", pending[0], "待采纳或驳回", True, "请采纳或驳回" + _title(pending[0]) + "，才能继续受限制的求助")
     if local:
-        # Local step (public APIs only): needs no 科研通 session and spends no points, so the points gate does not apply.
+        # The actual scheduler also runs this independently while site actions are blocked.
         found = next_local_step(items, prefs)
         if found:
             return found
@@ -224,7 +255,7 @@ def next_step(items, account, prefs, now, session=True, local=True):
             return step("sync", None, "同步求助状态", False, "距上次同步已超过 %d 分钟" % minutes)
     if bad:
         return attention_step()
-    held = [i for i in of("queued") if (i.get("oa_check") or {}).get("status") == "needs_human"]
+    held = [i for i in of("queued") if (i.get("oa_check") or {}).get("status") == "needs_human" and i.get("request_confirmed") is not True]
     # publish_blocked: an earlier publish attempt stopped on a check and the person took it over -> never auto-published again
     queued = [i for i in of("queued") if i not in held and i["id"] not in awaiting_oa and i.get("request_confirmed") is True and not i.get("publish_blocked")]
     unconfirmed = [i for i in of("queued") if i.get("request_confirmed") is not True and i.get("batch_id") and i["id"] not in awaiting_oa]
@@ -287,8 +318,47 @@ class Pipeline:
             try:
                 self.screen_step()
                 self.tick()
+                self.tick_mcp_authorized()
             except Exception as exc:
                 applog.record(self.store, "pipeline", "tick", exc)
+
+    def tick_mcp_authorized(self, when=None):
+        """Continue only explicitly confirmed MCP requests, even if global auto mode is off."""
+        if self.agent.busy or not self.agent.commands.empty():
+            return None
+        items, account, prefs, session = self._view()
+        if not prefs.get("mcp_website_actions") or prefs.get("mcp_actions_account", "default") != self.accounts.active_id:
+            return None
+        if any(stage_of(i) == "downloading" for i in items):
+            return None
+        targets = [i for i in items if i.get("request_mcp_auto_publish") is True and i.get("request_confirmed") is True
+                   and stage_of(i) in ("queued", "submitted", "fulfilled", "awaiting_decision")]
+        if not targets:
+            return None
+        settings = dict(prefs, pipeline_auto_publish=True, pipeline_rules_version=PIPELINE_RULES_VERSION,
+                        pipeline_auto_adopt=True, rejection_mode="manual")
+        for target in sorted(targets, key=lambda i: i.get("created", "")):
+            # An unrelated answer must not mask an authorized answer that is ready to process.
+            state = stage_of(target)
+            current_time = when or datetime.now().astimezone()
+            if state == "fulfilled" and session and not retry_waiting(target, current_time):
+                planned = step("download", target, "下载应助文件", False, _title(target) + "已有应助文件")
+                return planned if self.execute(planned) else None
+            if state == "awaiting_decision" and _auto_adopt_ok(target, settings):
+                planned = step("adopt", target, "自动采纳完全匹配的应助", False, "已通过身份和书目核验")
+                return planned if self.execute(planned) else None
+            # Preserve all answers for the actual points gate. If the gate is open, however,
+            # unrelated answers should not preempt an otherwise authorized queued request.
+            relevant = [i for i in items if stage_of(i) != "queued" or i["id"] == target["id"]]
+            if state == "queued" and not gate(items, account.get("points"), item_reward(target, settings, account.get("points")))["blocked"]:
+                relevant = [i for i in relevant if i["id"] == target["id"] or stage_of(i) not in ("fulfilled", "awaiting_decision")]
+            planned = next_step(relevant, account, settings, current_time, session=session, local=False)
+            action = planned.get("action")
+            if action in ("publish", "download", "adopt") and planned.get("item_id") == target["id"]:
+                return planned if self.execute(planned) else None
+            if action == "sync" and stage_of(target) == "submitted":
+                return planned if self.execute(planned) else None
+        return None
 
     def close(self):
         self.stopped.set()
@@ -331,6 +401,14 @@ class Pipeline:
             self.oa_run(item_id, human, **(options or {}))
         except Exception as exc:
             applog.record(self.store, "oa", "worker", exc, item_id=item_id)
+            # Leave a terminal OA result rather than repeatedly rescheduling a crashing worker.
+            try:
+                item = self.store.get(item_id) or {}
+                if not item.get("oa_check") and not item.get("pdf"):
+                    self.store.update(item_id, oa_check=dict(status="failed", attempts=[], time=clock()),
+                                      note="免费全文筛选发生异常，可重试或选择科研通求助。")
+            except Exception as recovery_exc:
+                applog.record(self.store, "oa", "worker_recovery", recovery_exc, item_id=item_id)
         finally:
             self.oa_running = None
             try:

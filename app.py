@@ -25,10 +25,10 @@ import publish_policy as pp
 import oa_fetch
 from paste_parser import parse_references, make_record, unparsed_segments
 from import_files import import_file
-from credential_vault import CredentialVault, AIKeyVault
+from credential_vault import CredentialVault, AIKeyVault, OpenAlexKeyVault
 from accounts import Accounts
 from task_states import workflow_state
-from pipeline import PIPELINE_RULES_VERSION, Pipeline, stage_of, tier, gate, next_step, rules_ok, has_session
+from pipeline import PIPELINE_RULES_VERSION, Pipeline, stage_of, tier, gate, next_step, rules_ok, has_session, acquisition_state
 from ai_service import AIService
 import app_info
 from runtime_paths import python_executable
@@ -78,6 +78,7 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
     accounts = Accounts(store.root)
     agent = BrowserAgent(store, accounts, use_worker=True)
     ai = AIService(AIKeyVault(store.root))
+    openalex_vault = OpenAlexKeyVault(store.root)
     ai.restore(store.snapshot().get("preferences", {}).get("ai_settings"))
     report_cache = {}   # the last previewed report: "让 AI 分析" sends exactly this text, nothing else
     pipeline = Pipeline(store, accounts, agent)
@@ -175,9 +176,10 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                 except Exception:
                     pass
                 snapshot = store.snapshot()
-                snapshot["items"] = [dict(i, workflow=workflow_state(i), stage=stage_of(i), deletion=deletion.view(i)) for i in snapshot["items"]
-                                     if i.get("source") == "demo" or i.get("account_id", "default") == accounts.active_id]
                 snapshot["account"] = snapshot.get("account_metrics", {}).get(accounts.active_id, {})
+                active_items = [i for i in snapshot["items"] if i.get("source") == "demo" or i.get("account_id", "default") == accounts.active_id]
+                snapshot["items"] = [dict(i, workflow=workflow_state(i), stage=stage_of(i), deletion=deletion.view(i),
+                                          acquisition=acquisition_state(i, gate(active_items, snapshot["account"].get("points"), i.get("request_reward")))) for i in active_items]
                 snapshot.pop("account_metrics", None)
                 for internal in ("monitor", "notifications", "publish_times"):
                     snapshot.pop(internal, None)
@@ -216,6 +218,7 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                 return self.respond(200, dict(snapshot, app_id="ablesci-local-demo", app_root=str(ROOT), busy=agent.busy, download_worker=agent.worker_status(),
                     waiting=agent.commands.qsize(), accounts=accounts.public(), active_account_id=accounts.active_id,
                     credentials_saved=accounts.vault().exists(), ai=ai.public_config(),
+                    openalex_key_saved=openalex_vault.exists(), openalex_env_configured=bool(os.environ.get("OPENALEX_API_KEY", "").strip()),
                     monitor=monitor.public(), autostart=dict(enabled=autostart.enabled(), available=autostart.allowed),
                     notify=dict(settings=notifications.settings(prefs_now), kinds={k: v[0] for k, v in notifications.KINDS.items()},
                                 defaults=notifications.defaults(), pending=notifier.pending()),
@@ -288,23 +291,43 @@ def make_server(port=8769, data_root=None, startup_dir=None, start_monitor=True,
                     raise ValueError("上传内容过大或为空")
                 body = json.loads(self.rfile.read(size))
                 path = urlparse(self.path).path
+                if path == "/api/literature-search":
+                    from literature_search import search_works
+                    key = openalex_vault.load() if openalex_vault.exists() else os.environ.get("OPENALEX_API_KEY", "")
+                    return self.respond(200, search_works(body.get("query"), body.get("cursor", "*"),
+                                                          body.get("year_from"), body.get("year_to"), body.get("open_access", False), body.get("page_size", 50), body.get("mode", "keyword"), key))
+                if path == "/api/openalex-key":
+                    key = body.get("key")
+                    if not isinstance(key, str) or len(key) > 256 or not key.strip() or re.search(r"\s", key):
+                        raise ValueError("请输入有效的 OpenAlex API Key")
+                    openalex_vault.save(key)
+                    return self.respond(200, {"ok": True, "saved": True})
+                if path == "/api/openalex-key-clear":
+                    openalex_vault.forget()
+                    return self.respond(200, {"ok": True, "saved": False})
                 if path == "/api/import":
                     if "records" in body:
                         if not isinstance(body["records"], list) or len(body["records"]) > 200:
                             raise ValueError("每次最多导入 200 篇")
+                        if any(not isinstance(r, dict) or not isinstance(r.get("authors", []), list)
+                               or any(r.get(k) is not None and not isinstance(r.get(k), str) for k in ("title", "doi"))
+                               for r in body["records"]):
+                            raise ValueError("文献记录须为对象，作者须为列表")
                         source = "AI整理" if body.get("ai_assisted") is True else "text"
-                        records = [make_record(str(r.get("title", "")), [str(a)[:200] for a in r.get("authors", [])][:300], str(r.get("doi", "")), source) for r in body["records"]]
+                        records = [make_record(r.get("title") or "", [str(a)[:200] for a in r.get("authors", [])][:300], r.get("doi") or "", source) for r in body["records"]]
+                        if any(not r["title"] and not r["doi"] for r in records):
+                            raise ValueError("每条文献至少需要有效标题或 DOI")
                     else:
                         records = parse_references(body.get("text", ""))
                     batch_id = intake.new_batch_id()
-                    before = len(store.snapshot()["items"])
                     for record in records:
                         store.add(record["title"], record["doi"], account_id=accounts.active_id, authors=record["authors"], import_format=record["format"],
                                   batch_id=batch_id, request_confirmed=False)
-                    count = len(store.snapshot()["items"]) - before
                     new_ids = [i["id"] for i in store.snapshot()["items"] if i.get("batch_id") == batch_id]
+                    count = len(new_ids)
                     if new_ids:
-                        intake.create_batch(store, batch_id, accounts.active_id, new_ids)
+                        intake.create_batch(store, batch_id, accounts.active_id, new_ids,
+                                            origin="mcp" if body.get("mcp_call") is True else "app")
                     store.event(f"已导入 {count} 条新文献，重复项已跳过。尚未发布求助。")
                     if new_ids and pipeline.auto_screen:
                         pipeline.screen_step()

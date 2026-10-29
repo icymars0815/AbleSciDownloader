@@ -325,6 +325,11 @@ def _cache_file(root, doi):
 def _cache_read(root, doi):
     try:
         saved = json.loads(_cache_file(root, doi).read_text("utf-8"))
+        result = saved["result"]
+        # Cached PMC locations from the retired OA API cannot include the
+        # current cloud service. Refresh lazily without deleting user data.
+        if result.get("pmcid") and not any(a.get("source") == "PMC Cloud" for a in result.get("attempts", [])):
+            return None
         ttl = CACHE_HIT_TTL if saved["result"].get("candidates") else CACHE_MISS_TTL
         if saved.get("doi") == doi and 0 <= _wall() - saved["cached_at"] < ttl:
             return dict(saved["result"], cached=True, fetched_at=saved.get("fetched_at"))
@@ -512,12 +517,36 @@ def _find(doi, email, deadline, core_key):
     if info["pmcid"]:
         add("https://europepmc.org/articles/%s?pdf=render" % info["pmcid"], "Europe PMC", 1)
         add("https://pmc.ncbi.nlm.nih.gov/articles/%s/pdf/" % info["pmcid"], "PMC", 1)
-        # 4. PMC OA web service: direct pdf links only (tgz packages are skipped)
-        tree = lookup("PMC OA", "https://www.ncbi.nlm.nih.gov/pmc/utils/oa/oa.fcgi?id=" + info["pmcid"], xml=True)
+        # The legacy PMC OA API was retired in August 2026. Its public S3
+        # replacement stores metadata per article version; version numbers do
+        # not imply published/manuscript ordering, so inspect each record.
+        bucket = "https://pmc-oa-opendata.s3.amazonaws.com/"
+        tree = lookup("PMC Cloud", bucket + "?" + urlencode({"list-type": "2", "prefix": info["pmcid"] + ".", "delimiter": "/", "max-keys": "20"}), xml=True)
+        versions = []
         if tree is not None:
-            for link in tree.iter("link"):
-                if link.get("format") == "pdf":
-                    add(link.get("href"), "PMC OA", 1)
+            for node in tree.findall("{*}CommonPrefixes/{*}Prefix"):
+                name = (node.text or "").rstrip("/")
+                if re.fullmatch(re.escape(info["pmcid"]) + r"\.\d+", name):
+                    versions.append(name)
+        cloud = []
+        for name in versions[:10]:
+            meta = lookup("PMC Cloud", bucket + "metadata/" + name + ".json")
+            if not isinstance(meta, dict) or meta.get("pmcid") != info["pmcid"] or doi_value(meta.get("doi") or "") != doi:
+                continue
+            pdf = meta.get("pdf_url") or ""
+            prefix = "s3://pmc-oa-opendata/" + name + "/"
+            if not isinstance(pdf, str) or not pdf.startswith(prefix):
+                continue
+            path = pdf[len(prefix):].split("?", 1)[0]
+            if not re.fullmatch(r"[A-Za-z0-9._-]+\.pdf", path, re.I):
+                continue
+            if not isinstance(meta.get("is_manuscript"), bool):
+                continue
+            manuscript = meta["is_manuscript"]
+            cloud.append((manuscript, bucket + name + "/" + path))
+        for manuscript, url in sorted(cloud):
+            info["is_oa"] = True
+            add(url, "PMC Cloud", 1, version=None if manuscript else "publishedVersion")
     # 5. Semantic Scholar (no key; a 429 is just recorded)
     s2 = lookup("Semantic Scholar", "https://api.semanticscholar.org/graph/v1/paper/DOI:" + encoded + "?fields=openAccessPdf,externalIds")
     if isinstance(s2, dict):

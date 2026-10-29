@@ -1,6 +1,6 @@
 """Server-side half of the harness (MCP / CLI) integration: /api/mcp/* endpoints.
 Anything that must not be forgeable by an external harness lives here: confirm tokens, permission checks, path confinement.
-Nothing here changes download/highspeed mode, AI settings, MCP permission, publish/adopt/reject, or reveals credentials."""
+Nothing here changes download/highspeed mode, AI settings, MCP permission, or reveals credentials. Confirmed MCP requests are processed by the bounded background pipeline."""
 import re
 import secrets
 import threading
@@ -12,7 +12,7 @@ import applog
 import intake
 import oa_fetch
 from core import doi_value, now
-from pipeline import stage_of
+from pipeline import stage_of, acquisition_state, gate
 
 TOKEN_TTL = 300
 RENDER_MAX_PAGE = 3
@@ -124,7 +124,27 @@ class McpApi:
         if isinstance(body.get("rewards"), dict) and any(dict(bound).get(k) != v for k, v in body["rewards"].items()):
             raise ValueError("悬赏与预览不一致；请重新预览")
         count = intake.confirm(self.store, body["batch_id"], ids, dict(bound), self.points(), self.session(), self.accounts.active_id)
+        for iid in ids:
+            self.store.update(iid, request_mcp_auto_publish=True)
         return dict(ok=True, confirmed=count, estimated_points=sum(r for _, r in bound))
+
+    def do_auto_continue(self, body):
+        """Resume only an already explicitly confirmed request; no other queue item is authorised."""
+        self.need_permission()
+        item = self.item(body.get("id"))
+        # A pre-submit interruption can be retried safely; a recorded or uncertain submission cannot.
+        if (body.get("retry_unsubmitted") is True and stage_of(item) == "attention"
+                and item.get("request_confirmed") is True and item.get("source") == "import"
+                and not item.get("publish_action") and not item.get("publish_check")
+                and not item.get("assist_url") and not item.get("publish_blocked")):
+            self.store.update(item["id"], status="ready", note="已恢复尚未提交的后台求助")
+            item = self.store.get(item["id"])
+        if item.get("request_confirmed") is not True or stage_of(item) != "queued" or item.get("publish_blocked"):
+            raise ValueError("仅已确认、尚未发布且未暂停的求助可继续后台处理")
+        self.store.update(item["id"], request_mcp_auto_publish=True)
+        items = [i for i in self.store.snapshot().get("items", []) if i.get("account_id", "default") == self.accounts.active_id]
+        blocked = gate(items, self.points(), item.get("request_reward"))
+        return dict(ok=True, id=item["id"], queued=True, gate=blocked)
 
     # ---- results ----
     def do_result(self, body):
@@ -134,8 +154,10 @@ class McpApi:
         b = v.get("bibliography") or {}
         retraction = v.get("retraction") or (item.get("metadata") or {}).get("retraction") or {}
         check = item.get("oa_check") or {}
+        mine = [i for i in self.store.snapshot().get("items", []) if i.get("account_id", "default") == self.accounts.active_id]
         return dict(
             id=item["id"], title=item.get("title", ""), doi=item.get("doi", ""), stage=stage_of(item), has_pdf=path is not None,
+            acquisition=acquisition_state(item, gate(mine, self.points(), item.get("request_reward"))),
             local_path=str(path) if path else "", original_filename=item.get("original_filename", ""), local_filename=item.get("local_filename", "") or (path.name if path else ""),
             size_bytes=path.stat().st_size if path else 0,
             verification=dict({k: v.get(k) for k in ("status", "reason", "title_score", "primary_dois", "pages")},
